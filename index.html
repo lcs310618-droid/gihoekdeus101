@@ -1,0 +1,1161 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>기획듀스 101</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23121110'/%3E%3Ccircle cx='32' cy='34' r='16' fill='%23F5C542'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=IBM+Plex+Sans+KR:wght@400;500;700&display=swap">
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+[hidden]{display:none!important}
+img{max-width:100%}
+/* layout: one phone-width column, sticky top bar, fixed bottom tabs; thumbnails are SVG so they scale like a real home feed */
+:root{
+  --bg:#121110; --surface:#1B1917; --surface-2:#262320; --line:#38322A; --fg:#F3EEE5; --muted:#A39B8E;
+  --accent:#F5C542; --accent-fg:#1C1300; --accent-text:#F5C542; --good:#62C48E; --warn:#E8A14F; --bad:#E36A6A;
+  --thumb-bg:#0E0D0C;
+  --font-body:'IBM Plex Sans KR',system-ui,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+  --font-display:'Black Han Sans','IBM Plex Sans KR',system-ui,sans-serif;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){ :root:not([data-theme="dark"]){
+  --bg:#F6F2EA; --surface:#FFFFFF; --surface-2:#EEE8DC; --line:#DCD3C3; --fg:#1C1813; --muted:#6E6657;
+  --accent:#F0BC2E; --accent-fg:#1C1300; --accent-text:#8B6300; --good:#1E8A52; --warn:#B86A14; --bad:#C23B3B;
+  color-scheme:light;
+} }
+:root[data-theme="light"]{
+  --bg:#F6F2EA; --surface:#FFFFFF; --surface-2:#EEE8DC; --line:#DCD3C3; --fg:#1C1813; --muted:#6E6657;
+  --accent:#F0BC2E; --accent-fg:#1C1300; --accent-text:#8B6300; --good:#1E8A52; --warn:#B86A14; --bad:#C23B3B;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.top-in{max-width:600px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:10px}
+.brand{font-family:var(--font-display);font-size:22px;letter-spacing:.5px;color:var(--fg);line-height:1}
+.brand b{color:var(--accent)}
+.week{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.gbtn{display:inline-flex;align-items:center;gap:10px;background:#fff;color:#1f1f1f;border:1px solid #dadce0;border-radius:10px;padding:10px 16px;font-weight:500;font-size:14px;cursor:pointer}
+.gbtn svg{width:18px;height:18px}
+.pill{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 9px;font-size:11.5px;font-weight:500;line-height:1.5;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.pill.on{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.pill.warn{border-color:var(--warn);color:var(--warn)}
+.pill.bad{border-color:var(--bad);color:var(--bad)}
+.pill.good{border-color:var(--good);color:var(--good)}
+.pill.acc{border-color:var(--accent-text);color:var(--accent-text)}
+.pill.eye{border-style:dashed;color:var(--muted)}
+.pill.eye b{font-weight:500;color:var(--fg)}
+.pill.eye::before{content:"\1F512";font-size:10px}
+
+main{max-width:600px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px calc(84px + env(safe-area-inset-bottom,0px))}
+h1,h2,h3{margin:0;text-wrap:balance;font-weight:700;line-height:1.3}
+h2{font-size:18px}
+h3{font-size:15px}
+p{margin:0}
+.muted{color:var(--muted)}
+.small{font-size:12.5px}
+.num{font-variant-numeric:tabular-nums}
+.stack{display:flex;flex-direction:column;gap:12px}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.between{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px}
+.note{background:var(--surface-2);border-radius:10px;padding:10px 12px;font-size:13px;color:var(--muted)}
+.note.acc{border-left:3px solid var(--accent);border-radius:0 10px 10px 0;color:var(--fg)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:10px;padding:9px 14px;font-weight:500;font-size:14px;min-height:40px}
+.btn:hover{background:var(--surface-2)}
+.btn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.btn.primary:hover{filter:brightness(1.05)}
+.btn.ghost{background:transparent}
+.btn.danger{border-color:var(--bad);color:var(--bad)}
+.btn.sm{padding:5px 10px;min-height:30px;font-size:12.5px;border-radius:8px}
+.btn.wide{width:100%}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--surface);border-top:1px solid var(--line);padding-left:max(8px,env(safe-area-inset-left,0px));padding-right:max(8px,env(safe-area-inset-right,0px));padding-bottom:env(safe-area-inset-bottom,0px)}
+.tabs-in{max-width:600px;margin:0 auto;display:flex}
+.tab{flex:1;border:0;background:transparent;color:var(--muted);padding:9px 2px 8px;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;font-weight:500;min-width:0}
+.tab svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tab.on{color:var(--accent-text)}
+.tab .dot{position:absolute}
+
+.feed{display:grid;grid-template-columns:1fr;gap:18px}
+@media (min-width:520px){.feed{grid-template-columns:1fr 1fr;gap:16px}}
+.tile{display:block;text-align:left;background:transparent;border:0;padding:0;color:inherit;width:100%;min-width:0}
+.thumb{width:100%;max-width:100%;aspect-ratio:16/9;display:block;border-radius:10px;background:var(--thumb-bg);overflow:hidden}
+.thumb text{font-family:var(--font-display);paint-order:stroke;stroke:#000;stroke-width:4;stroke-linejoin:round}
+.thumb .t1{fill:#FFFFFF}
+.thumb .t2{fill:#FFD24A}
+.tile-title{margin-top:8px;font-weight:500;font-size:14.5px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.tile-meta{margin-top:3px;font-size:12px;color:var(--muted);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.tile.picked .thumb{outline:3px solid var(--accent);outline-offset:-3px}
+.tabs-in .tab{font-size:10.5px}
+
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:12.5px;font-weight:500;color:var(--muted)}
+.field label b{color:var(--accent-text);font-weight:700}
+.field input,.field textarea,.field select{width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:9px 11px;font-size:14.5px;color:var(--fg);min-width:0}
+.field textarea{min-height:76px;resize:vertical}
+.field .hint{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-between;gap:8px}
+.field .hint.bad{color:var(--bad)}
+.field .hint.warn{color:var(--warn)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{flex:1;border:0;background:transparent;padding:8px 6px;font-size:13px;color:var(--muted);min-width:0}
+.seg button.on{background:var(--accent);color:var(--accent-fg);font-weight:500}
+.check{display:flex;align-items:center;gap:8px;font-size:14px}
+.check input{width:18px;height:18px;accent-color:var(--accent)}
+
+.match{display:flex;flex-direction:column;gap:10px}
+.vs{text-align:center;font-family:var(--font-display);font-size:18px;color:var(--muted);letter-spacing:1px}
+.mcard{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px;min-width:0}
+.mcard .ttl{margin-top:8px;font-weight:500;font-size:15px;line-height:1.4}
+.mcard .one{margin-top:3px;font-size:13.5px;color:var(--fg)}
+.mcard .one{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap}
+.mcard .hook{margin-top:6px;font-size:12.5px;color:var(--muted);border-top:1px dashed var(--line);padding-top:6px;display:flex;flex-direction:column;gap:3px}
+.mcard .hook b{color:var(--accent-text);font-weight:500}
+.sec{display:flex;flex-direction:column;gap:10px;padding-top:10px;border-top:1px solid var(--line)}
+.sec h3{font-size:14px}
+.setrow{display:grid;grid-template-columns:38px 1fr 1fr 44px;gap:6px;align-items:center}
+.setrow.one{grid-template-columns:38px 1fr}
+.setrow input{width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:9px 11px;font-size:14.5px;color:var(--fg);min-width:0}
+.setlab{font-size:12px;color:var(--muted);font-weight:500}
+.setlab b{color:var(--accent-text)}
+.alts{display:flex;flex-direction:column;gap:4px;margin-top:8px;font-size:13px}
+.alt{display:grid;grid-template-columns:76px 1fr;gap:8px;min-width:0}
+.alt span:last-child{word-break:break-word}
+.lnk{color:var(--accent-text);word-break:break-all}
+.thumb-img{width:100%;max-width:100%;aspect-ratio:16/9;object-fit:cover;display:block;border-radius:10px;background:#0E0D0C}
+.brow{display:flex;gap:12px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px;text-align:left;width:100%;color:inherit;min-width:0;cursor:pointer}
+.brow .bt{flex:1;min-width:0}
+.brow .bt .ttl{font-weight:500;font-size:15px;line-height:1.35}
+.brow .bt .sub{font-size:12.5px;color:var(--muted);margin-top:2px}
+.drop{display:block;border:1px dashed var(--line);border-radius:12px;padding:14px;text-align:center;color:var(--muted);font-size:13px;background:var(--surface-2);cursor:pointer}
+.drop input{display:none}
+.notebox{margin-top:8px;font-size:13px;background:var(--surface-2);border-radius:10px;padding:8px 10px;white-space:pre-wrap;word-break:break-word}
+.notebox b{color:var(--accent-text);font-weight:500}
+details.more{margin-top:8px}
+details.more summary{cursor:pointer;color:var(--accent-text);font-size:13px;font-weight:500;list-style:none;display:flex;align-items:center;gap:4px}
+details.more summary::-webkit-details-marker{display:none}
+details.more summary::before{content:"▸";font-size:11px}
+details.more[open] summary::before{content:"▾"}
+.kv{display:grid;grid-template-columns:72px 1fr;gap:4px 10px;font-size:13.5px;margin-top:8px}
+.kv dt{color:var(--muted);font-size:12.5px;padding-top:1px}
+.kv dd{margin:0;white-space:pre-wrap;word-break:break-word;min-width:0}
+.decide{display:grid;grid-template-columns:1fr 1.25fr 1fr;gap:8px}
+.decide .btn{padding:10px 4px;font-size:13.5px}
+.bar{height:5px;background:var(--surface-2);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);width:0}
+.roundhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.roundhead .big{font-family:var(--font-display);font-size:26px;line-height:1;color:var(--fg)}
+.roundhead .big em{color:var(--accent);font-style:normal}
+
+.rank{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line)}
+.rank:last-child{border-bottom:0}
+.rank .n{font-family:var(--font-display);font-size:22px;width:30px;color:var(--muted);line-height:1.1;flex:none;text-align:center}
+.rank.top .n{color:var(--accent)}
+.rank .th{width:104px;flex:none}
+.rank .body{flex:1;min-width:0}
+.rank .ttl{font-weight:500;font-size:14px;line-height:1.35}
+.rank .sc{font-size:12.5px;color:var(--muted);margin-top:2px}
+.rank .sc b{color:var(--fg);font-weight:500}
+
+.sheet{position:fixed;inset:0;z-index:20;background:var(--bg);overflow-y:auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:calc(10px + env(safe-area-inset-top,0px)) calc(24px + env(safe-area-inset-bottom,0px))}
+.sheet-in{max-width:600px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.sheet-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;position:sticky;top:0;background:var(--bg);padding-block:6px;z-index:2}
+.cm{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.cm .head{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.cm .txt{margin-top:6px;white-space:pre-wrap;word-break:break-word;font-size:14px}
+.cm .tk{margin-top:6px;display:grid;grid-template-columns:44px 1fr;gap:3px 8px;font-size:13.5px}
+.cm .tk dt{color:var(--muted);font-size:12px}
+.cm .tk dd{margin:0;white-space:pre-wrap;word-break:break-word}
+.cm .foot{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.composer{background:var(--surface-2);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.composer textarea,.composer input{background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:8px 10px;width:100%;font-size:14px;min-width:0}
+.composer textarea{min-height:56px;resize:vertical}
+.toast{position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:9px 14px;border-radius:999px;font-size:13.5px;font-weight:500;z-index:30;max-width:90vw;text-align:center}
+.gate{min-height:60vh;display:flex;align-items:center;justify-content:center;text-align:center}
+.gate .card{max-width:420px}
+.who{display:flex;align-items:center;gap:8px}
+.who img{width:22px;height:22px;border-radius:50%}
+table.plain{width:100%;border-collapse:collapse;font-size:13.5px}
+table.plain td{padding:7px 4px;border-bottom:1px solid var(--line);vertical-align:top}
+table.plain td:last-child{text-align:right;white-space:nowrap}
+.empty{padding:28px 12px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:14px}
+.empty b{color:var(--fg);display:block;margin-bottom:4px;font-weight:500}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><linearGradient id="tg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2E2924"/><stop offset="1" stop-color="#090807"/></linearGradient></defs></svg>
+
+<header class="top"><div class="top-in">
+  <div class="brand">기획듀스 <b>101</b></div>
+  <div class="week" id="weekBox"><span class="pill">연결 중</span></div>
+</div></header>
+
+<main>
+  <section id="scr-gate" class="gate" hidden><div class="card stack"><h2 id="gateTitle">연결 중입니다</h2><p class="muted" id="gateMsg"></p></div></section>
+  <section id="scr-board" hidden></section>
+  <section id="scr-compose" hidden></section>
+  <section id="scr-worldcup" hidden></section>
+  <section id="scr-pk" hidden></section>
+  <section id="scr-results" hidden></section>
+  <section id="scr-admin" hidden></section>
+</main>
+
+<nav class="tabs" id="tabs" hidden><div class="tabs-in">
+  <button class="tab on" data-tab="board"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 20V10"/></svg>게시판</button>
+  <button class="tab" data-tab="compose"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>올리기</button>
+  <button class="tab" data-tab="worldcup"><svg viewBox="0 0 24 24"><path d="M8 21h8M12 17v4M6 3h12v6a6 6 0 0 1-12 0z"/><path d="M6 5H3v2a3 3 0 0 0 3 3M18 5h3v2a3 3 0 0 1-3 3"/></svg>월드컵</button>
+  <button class="tab" data-tab="pk"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/><circle cx="16" cy="9" r="1.5"/></svg>썸네일</button>
+  <button class="tab" data-tab="results"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg>결과</button>
+  <button class="tab" data-tab="admin" id="tabAdmin" hidden><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>관리</button>
+</div></nav>
+
+<div id="sheet" class="sheet" hidden><div class="sheet-in" id="sheetIn"></div></div>
+
+<script>
+(function(){
+'use strict';
+const $ = (s, r) => (r || document).querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const TYPES = ['정보성 예능', '인플루언서 게스트 예능', '기타'];
+const KINDS = ['단발 소재', '포맷 제안'];
+const PHASE = { upload: '카드 모집 중', worldcup: '월드컵 진행 중', results: '결과 공개' };
+const DEFAULT_SETTINGS = { wcDays: [2, 5], endHour: 18, target: 16, perPerson: 3, ownerCards: 2, dualPass: 2, detailFrom: 2, pkPerPerson: 3, pkDualPass: 1, pkNoteFrom: 2, override: null, overrideRound: null, schedule: '화·금 16강 · 전날 23:59까지 업로드 · 당일 18:00까지 월드컵 · 18:00 결과 공개' };
+const DAYS = '일월화수목금토';
+
+const S = {
+  db: null, auth: null, uid: null, email: null, name: '', role: 'member', isOwner: false, canWrite: true, ready: false, profiles: {}, members: [],
+  settings: null, settingsLoaded: false, cards: [], runs: [], mine: {}, meta: { comments: {}, likes: {} },
+  run: null, tab: 'board', openCard: null, comments: [], unsubComments: null, resultsWeek: null,
+  authorsIndex: null, busy: false, draft: null, compose: { types: [TYPES[0]], kind: KINDS[0], revisedFrom: null }, wcCommentOpen: {},
+  battles: [], pkOpen: null, pkEntries: [], unsubEntries: null, pkRuns: {}, pkPublic: [], pkImg: null, pkNew: false
+};
+
+/* ---------- helpers ---------- */
+function toast(msg, ms) {
+  let t = $('#toast'); if (!t) { t = document.createElement('div'); t.id = 'toast'; t.className = 'toast'; document.body.appendChild(t); }
+  t.textContent = msg; t.hidden = false; clearTimeout(t._tm); t._tm = setTimeout(() => { t.hidden = true; }, ms || 2200);
+}
+function thumbSVG(t1, t2) {
+  const sz = s => Math.min(36, Math.floor(300 / Math.max((s || '').length, 1)));
+  const s1 = sz(t1), s2 = sz(t2), y2 = 164, y1 = y2 - s2 - 8;
+  return `<svg class="thumb" viewBox="0 0 320 180" role="img" aria-label="${esc(t1)} ${esc(t2)}"><rect width="320" height="180" fill="#0E0D0C"/><rect width="320" height="180" fill="url(#tg)"/><text x="14" y="${y1}" font-size="${s1}" class="t1">${esc(t1 || '')}</text><text x="14" y="${y2}" font-size="${s2}" class="t2">${esc(t2 || '')}</text></svg>`;
+}
+/* rounds are keyed by the worldcup day (YYYY-MM-DD, device local time); phase follows the clock, with an admin override for the current round */
+const pad = n => String(n).padStart(2, '0');
+const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const parseISO = s => { const p = String(s || '').split('-').map(Number); return p.length === 3 && !isNaN(p[0]) ? new Date(p[0], p[1] - 1, p[2]) : new Date(); };
+const wcDays = () => { const s = S.settings; return (s && Array.isArray(s.wcDays) && s.wcDays.length) ? s.wcDays : [2, 5]; };
+function nextWcDate(from, inclusive) { const d = new Date(from.getFullYear(), from.getMonth(), from.getDate()); if (!inclusive) d.setDate(d.getDate() + 1); for (let i = 0; i < 14; i++) { if (wcDays().includes(d.getDay())) return iso(d); d.setDate(d.getDate() + 1); } return iso(d); }
+const curWeek = () => nextWcDate(new Date(), true);
+const nextRound = w => nextWcDate(parseISO(w), false);
+function phase() {
+  const s = S.settings; if (!s) return 'upload';
+  const now = new Date(), cur = curWeek();
+  if (s.override && s.overrideRound === cur) return s.override;
+  if (iso(now) !== cur) return 'upload';
+  return now.getHours() < (s.endHour ?? 18) ? 'worldcup' : 'results';
+}
+const weekLabel = w => { const d = parseISO(w); return `${d.getMonth() + 1}/${d.getDate()} (${DAYS[d.getDay()]})`; };
+const isPastRound = w => w < curWeek();
+const isOps = () => S.role === 'owner' || S.role === 'ops';
+const isMine = id => !!(S.mine.cards && S.mine.cards[id]);
+const cardById = id => S.cards.find(c => c.id === id);
+const commentCount = id => S.cards._cc ? (S.cards._cc[id] || 0) : null;
+const targetWeek = () => phase() === 'upload' ? curWeek() : nextRound(curWeek());
+const myLimit = () => S.isOwner ? (S.settings?.ownerCards ?? 2) : (S.settings?.perPerson ?? 5);
+const countMine = w => Object.values(S.mine.cards || {}).filter(x => x === w).length;
+const poolFor = w => S.cards.filter(c => c.weekId === w && !c.urgent && c.status !== 'archived');
+const myRunDone = w => !!(S.run && S.run.weekId === w && S.run.done);
+function canSeeComments(card) {
+  if (!card) return false;
+  if (isMine(card.id)) return true;
+  if (card.weekId < curWeek()) return true;
+  if (card.weekId === curWeek() && phase() === 'results') return true;
+  if (myRunDone(card.weekId)) return true;
+  return false;
+}
+function profilesInto() {
+  document.querySelectorAll('[data-name]').forEach(el => { const p = S.profiles[el.dataset.name]; if (p) el.textContent = p.name || p.email || '이름 없음'; });
+}
+function hasDigit(s) { return /\d/.test(s || ''); }
+function ownerTag(kind, id) {
+  if (!S.isOwner || !S.authorsIndex) return '';
+  const uid = (S.authorsIndex[kind] || {})[id]; if (!uid) return '';
+  return `<span class="pill eye" title="계란님에게만 보입니다"><b data-name="${esc(uid)}">…</b></span>`;
+}
+function shuffle(a) { const r = a.slice(); for (let i = r.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [r[i], r[j]] = [r[j], r[i]]; } return r; }
+function lsGet(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+function lsDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
+function fmtDate(ts) { if (!ts) return ''; const d = new Date(ts); return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; }
+
+/* ---------- boot ---------- */
+function showScreen(name) {
+  ['gate', 'board', 'compose', 'worldcup', 'pk', 'results', 'admin'].forEach(n => { const el = $('#scr-' + n); if (el) el.hidden = n !== name; });
+}
+function setTab(t) {
+  S.tab = t; document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  render(); window.scrollTo({ top: 0 });
+}
+function gate(title, msg) { $('#gateTitle').textContent = title; $('#gateMsg').textContent = msg || ''; showScreen('gate'); $('#tabs').hidden = true; }
+
+function gateLogin() {
+  $('#gateTitle').textContent = '기획듀스 101';
+  $('#gateMsg').innerHTML = `<span class="muted">피갤 1중대 전용입니다. 초대된 구글 계정으로 들어오세요.</span><div style="margin-top:14px"><button class="gbtn" data-act="login"><svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.5l6.7-6.7C35.6 2.5 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.3l7.8 6C12.3 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17.5z"/><path fill="#FBBC05" d="M10.4 28.7A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.7l-7.8-6A24 24 0 0 0 0 24c0 3.9.9 7.5 2.6 10.7l7.8-6z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.9 2.3-8.4 2.3-6.3 0-11.7-4.1-13.6-9.9l-7.8 6C6.5 42.6 14.6 48 24 48z"/></svg>Google로 로그인</button></div><p class="small muted" style="margin-top:10px">카카오톡·인스타 안에서 열면 구글 로그인이 막힙니다. Chrome이나 Safari로 열어주세요.</p>`;
+  showScreen('gate'); $('#tabs').hidden = true;
+}
+async function login() {
+  const provider = new firebase.auth.GoogleAuthProvider(); provider.setCustomParameters({ prompt: 'select_account' });
+  try { await S.auth.signInWithPopup(provider); }
+  catch (e) {
+    const c = e && e.code;
+    if (c === 'auth/popup-blocked' || c === 'auth/operation-not-supported-in-this-environment' || c === 'auth/cancelled-popup-request') { try { await S.auth.signInWithRedirect(provider); } catch (e2) { toast('로그인 실패: ' + (e2.code || e2.message)); } }
+    else if (c !== 'auth/popup-closed-by-user') toast('로그인 실패: ' + (c || e.message));
+  }
+}
+// firebase-config.js를 글자로 읽어서 firebaseConfig = { ... } 부분만 꺼낸다.
+// Firebase 콘솔이 보여주는 코드를 어떤 형태로 붙여넣어도(npm용·script용·import 줄 포함) 동작하게.
+async function loadConfig() {
+  let text = '';
+  try { const r = await fetch('firebase-config.js', { cache: 'no-store' }); if (r.ok) text = await r.text(); } catch (e) {}
+  const m = text.match(/\{[^{}]*apiKey[^{}]*\}/);
+  if (!m) return null;
+  try { const cfg = (new Function('return (' + m[0] + ')'))(); return cfg && cfg.apiKey && !/붙여넣/.test(cfg.apiKey) ? cfg : null; } catch (e) { return null; }
+}
+async function init() {
+  showScreen('gate'); $('#gateTitle').textContent = '연결 중입니다'; $('#gateMsg').textContent = '';
+  const cfg = await loadConfig();
+  if (!cfg) { gate('설정이 아직 없습니다', 'firebase-config.js 파일에 Firebase 콘솔의 firebaseConfig 코드를 붙여넣어 주세요 (README 1단계).'); return; }
+  firebase.initializeApp(cfg);
+  S.auth = firebase.auth(); S.db = firebase.firestore();
+  try { await S.auth.getRedirectResult(); } catch (e) { if (e && e.code !== 'auth/no-auth-event') toast('로그인 실패: ' + (e.code || e.message)); }
+  S.auth.onAuthStateChanged(onAuth);
+}
+function ownerOf(settings) { return String((settings && settings.ownerEmail) || '').toLowerCase(); }
+async function claimOwner() {
+  if (S.busy) return; S.busy = true;
+  try {
+    await S.db.doc('settings/main').set(Object.assign({}, DEFAULT_SETTINGS, { ownerEmail: S.email, createdAt: Date.now() }));
+    await S.db.doc('members/' + S.email).set({ role: 'owner', name: S.name, addedAt: Date.now() });
+    toast('계란님 계정으로 등록했습니다');
+    S.busy = false; onAuth(S.auth.currentUser);
+  } catch (e) { S.busy = false; gate('규칙이 아직 없습니다', 'Firebase 콘솔 → Firestore → 규칙 탭에 firestore.rules 내용을 붙여넣고 게시했는지 확인하세요. (' + (e.code || e.message) + ')'); }
+}
+async function onAuth(u) {
+  if (S.ready) { if (!u) location.reload(); return; }
+  if (!u) { gateLogin(); return; }
+  const email = (u.email || '').toLowerCase();
+  if (!email) { gate('이메일을 확인할 수 없는 계정입니다', '다른 구글 계정으로 다시 로그인해 주세요.'); return; }
+  S.uid = u.uid; S.email = email; S.name = u.displayName || email.split('@')[0];
+  // 첫 설정: settings/main이 없으면 지금 로그인한 계정을 계란님(최종 결정권자)으로 등록
+  let st = null;
+  try { const snap = await S.db.doc('settings/main').get(); st = snap.exists ? snap.data() : null; }
+  catch (e) { gate('규칙이 아직 없습니다', 'Firebase 콘솔 → Firestore → 규칙 탭에 firestore.rules 내용을 붙여넣고 게시했는지 확인하세요. (' + (e.code || e.message) + ')'); return; }
+  if (!st) {
+    $('#gateTitle').textContent = '첫 설정';
+    $('#gateMsg').innerHTML = `<span class="muted">이 사이트의 <b>계란님(최종 결정권자) 계정</b>을 지금 로그인한 <b>${esc(email)}</b>로 등록합니다. 이 계정만 카드·시안·코멘트 작성자를 볼 수 있습니다. 나중에 관리 탭에서 바꿀 수 있습니다.</span><div class="row" style="margin-top:14px;justify-content:center"><button class="btn primary" data-act="claimOwner">이 계정으로 등록</button><button class="btn sm ghost" data-act="logout">다른 계정으로</button></div>`;
+    showScreen('gate'); $('#tabs').hidden = true; return;
+  }
+  S.isOwner = ownerOf(st) === email;
+  let m = null;
+  try { const snap = await S.db.doc('members/' + email).get(); m = snap.exists ? snap.data() : null; } catch (e) { m = null; }
+  if (!m && S.isOwner) {
+    m = { role: 'owner', name: S.name, addedAt: Date.now() };
+    try { await S.db.doc('members/' + email).set(m); } catch (e) { gate('규칙 설정이 안 됐습니다', 'Firestore 규칙(firestore.rules)을 콘솔에 붙여넣고 게시했는지 확인하세요. ' + (e.code || '')); return; }
+  }
+  if (!m) {
+    $('#gateTitle').textContent = '초대되지 않은 계정입니다';
+    $('#gateMsg').innerHTML = `<span class="muted">${esc(email)} 계정은 아직 멤버가 아닙니다. 계란님이나 우재 PD에게 이 이메일을 추가해 달라고 하세요.</span><div style="margin-top:12px"><button class="btn sm" data-act="logout">다른 계정으로</button></div>`;
+    showScreen('gate'); $('#tabs').hidden = true; return;
+  }
+  S.role = S.isOwner ? 'owner' : (m.role || 'member'); S.canWrite = true;
+  try { await S.db.doc('profiles/' + S.uid).set({ name: S.name, email, photo: u.photoURL || '', updatedAt: Date.now() }, { merge: true }); } catch (e) {}
+  if (m.name !== S.name) { try { await S.db.doc('members/' + email).update({ name: S.name }); } catch (e) {} }
+  subscribeAll();
+  $('#tabs').hidden = false; S.ready = true;
+  setTab(S.tab);
+}
+function subscribeAll() {
+  const db = S.db, uid = S.uid;
+  db.doc('settings/main').onSnapshot(s => { S.settings = s.exists ? s.data() : null; S.settingsLoaded = true; if (S.settings && (ownerOf(S.settings) === S.email) !== S.isOwner) { location.reload(); return; } render(); }, e => toast('설정을 읽지 못했습니다: ' + e.code));
+  db.collection('profiles').onSnapshot(q => { const p = {}; q.docs.forEach(d => p[d.id] = d.data()); S.profiles = p; profilesInto(); }, e => {});
+  db.collection('members').onSnapshot(q => { S.members = q.docs.map(d => Object.assign({ email: d.id }, d.data())); if (S.tab === 'admin') render(); }, e => {});
+  setInterval(() => { if (S.ready && S.settings) render(); }, 60000);
+  db.collection('cards').onSnapshot(q => { S.cards = q.docs.map(d => Object.assign({ id: d.id }, d.data())); S.cards.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)); selfHealAuthor(); render(); }, e => toast('카드를 읽지 못했습니다: ' + e.code));
+  db.collection('comments').onSnapshot(q => { const cc = {}; q.docs.forEach(d => { const c = d.data(); cc[c.cardId] = (cc[c.cardId] || 0) + 1; }); S.allComments = q.docs.map(d => Object.assign({ id: d.id }, d.data())); S.cards._cc = cc; if (S.openCard) { S.comments = S.allComments.filter(c => c.cardId === S.openCard).sort((a, b) => (b.likes || 0) - (a.likes || 0) || (a.createdAt || 0) - (b.createdAt || 0)); } render(); }, e => {});
+  db.collection('runs').onSnapshot(q => { S.runs = q.docs.map(d => Object.assign({ id: d.id }, d.data())); render(); }, e => {});
+  db.doc('authors/' + uid).onSnapshot(s => { S.mine = s.exists ? s.data() : {}; if (!S.mine.cards) S.mine.cards = {}; render(); }, e => {});
+  db.doc('users/' + uid + '/private/run').onSnapshot(s => { S.run = s.exists ? s.data() : null; render(); }, e => {});
+  db.collection('authors').onSnapshot(q => { const ix = { cards: {}, entries: {}, comments: {} }; q.docs.forEach(d => { const a = d.data(); Object.keys(a.cards || {}).forEach(k => ix.cards[k] = d.id); Object.keys(a.entries || {}).forEach(k => ix.entries[k] = d.id); Object.keys(a.comments || {}).forEach(k => ix.comments[k] = d.id); }); S.authorsIndex = ix; render(); }, e => {});
+  db.collection('battles').onSnapshot(q => { S.battles = q.docs.map(d => Object.assign({ id: d.id }, d.data())).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)); render(); }, e => {});
+  db.collection('pkruns').onSnapshot(q => { S.pkPublic = q.docs.map(d => Object.assign({ id: d.id }, d.data())); render(); }, e => {});
+  db.doc('users/' + uid + '/private/pkrun').onSnapshot(s => { S.pkRuns = s.exists ? s.data() : {}; render(); }, e => {});
+  db.doc('users/' + uid + '/private/meta').onSnapshot(s => { S.meta = s.exists ? s.data() : { comments: {}, likes: {} }; if (!S.meta.comments) S.meta.comments = {}; if (!S.meta.likes) S.meta.likes = {}; render(); }, e => {});
+}
+function selfHealAuthor() {
+  if (!S.db || !S.uid) return;
+  S.cards.forEach(c => { if (c.status === 'selected' && !c.authorUid && isMine(c.id) && !c._healing) { c._healing = true; S.db.doc('cards/' + c.id).update({ authorUid: S.uid }).catch(() => {}); } });
+}
+
+/* ---------- render ---------- */
+function render() {
+  if (!S.ready) return;
+  $('#tabAdmin').hidden = !isOps();
+  if (S.tab === 'admin' && !isOps()) S.tab = 'board';
+  renderHeader();
+  if (!S.settings) { renderNoSettings(); return; }
+  showScreen(S.tab);
+  ({ board: renderBoard, compose: renderCompose, worldcup: renderWorldcup, pk: renderPk, results: renderResults, admin: renderAdmin })[S.tab]();
+  if (S.openCard) renderDetail();
+  if (S.pkOpen && S.pkEntries.length) selfHealEntryAuthor();
+}
+function renderHeader() {
+  const w = $('#weekBox');
+  if (!S.settings) { w.innerHTML = `<span class="pill">${S.settingsLoaded ? '설정 전' : '불러오는 중'}</span>`; return; }
+  w.innerHTML = `<span>${esc(weekLabel(curWeek()))}</span><span class="pill ${phase() === 'worldcup' ? 'on' : phase() === 'results' ? 'acc' : ''}">${PHASE[phase()] || phase()}</span><button class="btn sm ghost" data-act="logout" title="${esc(S.email || '')}">나가기</button>`;
+}
+function renderNoSettings() {
+  showScreen('board');
+  $('#scr-board').innerHTML = S.isOwner
+    ? `<div class="empty"><b>설정이 지워졌습니다</b>기본 설정(화·금 16강)을 다시 만듭니다.<div style="margin-top:12px"><button class="btn primary" data-act="claimOwner">다시 만들기</button></div></div>`
+    : `<div class="empty"><b>준비 중입니다</b>새로고침해 보세요. 계란님이 첫 설정을 마치면 여기에 카드가 보입니다.</div>`;
+}
+
+/* board */
+function tileHTML(c) {
+  const cc = commentCount(c.id);
+  const pills = [];
+  if (c.status === 'selected') pills.push('<span class="pill on">선정</span>');
+  if (c.urgent) pills.push('<span class="pill bad">긴급</span>');
+  if (isMine(c.id)) pills.push('<span class="pill acc">내 카드</span>');
+  if (c.revisedFrom) pills.push('<span class="pill">수정본</span>');
+  return `<button class="tile" data-act="open" data-id="${esc(c.id)}">${thumbSVG(c.t1, c.t2)}<div class="tile-title">${esc(c.title)}</div><div class="tile-meta"><span>피지컬갤러리 · 연습생 ${esc(c.no || '')}</span>${cc ? `<span>· 코멘트 ${cc}</span>` : ''}${pills.join('')}</div></button>`;
+}
+function renderBoard() {
+  const w = curWeek(), cur = S.cards.filter(c => c.weekId === w);
+  const next = S.cards.filter(c => c.weekId > w);
+  const pool = cur.filter(c => !c.urgent), urgent = cur.filter(c => c.urgent);
+  const cap = S.settings.target || 16;
+  const mineN = countMine(w);
+  let html = `<div class="stack">
+    <div class="between"><h2>${esc(weekLabel(w))} 월드컵 카드 <span class="muted num" style="font-weight:400">${pool.length}/${cap}</span></h2><span class="pill ${mineN >= myLimit() ? 'good' : ''}">내 카드 ${mineN}/${myLimit()}</span></div>
+    <p class="small muted">${esc(S.settings.schedule || '')}</p>`;
+  if (S.canWrite === false) html += `<div class="note">보기 전용 권한입니다. 카드를 올리거나 월드컵을 하려면 계란님에게 '편집자' 권한으로 다시 초대해 달라고 하세요.</div>`;
+  if (urgent.length) html += `<h3 style="margin-top:4px">긴급 카드 <span class="muted small" style="font-weight:400">월드컵 없이 바로 회의 안건</span></h3><div class="feed">${urgent.map(tileHTML).join('')}</div>`;
+  html += pool.length
+    ? `<div class="feed">${pool.map(tileHTML).join('')}</div>`
+    : `<div class="empty"><b>아직 올라온 카드가 없습니다</b>'올리기' 탭에서 첫 카드를 올려보세요. 작성자는 보이지 않습니다.</div>`;
+  if (next.length) html += `<h3 style="margin-top:8px">다음 회차 대기 <span class="muted small" style="font-weight:400">${next.length}장 · ${esc(weekLabel(next[0].weekId))}</span></h3><div class="feed">${next.map(tileHTML).join('')}</div>`;
+  const past = S.cards.filter(c => c.weekId < w);
+  if (past.length) html += `<details class="more" style="margin-top:8px"><summary>지난 회차 카드 ${past.length}장</summary><div class="feed" style="margin-top:10px">${past.slice(0, 40).map(tileHTML).join('')}</div></details>`;
+  html += `</div>`;
+  $('#scr-board').innerHTML = html;
+}
+
+/* compose — the form follows how 계란님 writes an item: 소재 → 로그라인 → 시안 1·2·3안 → 왜 되나(누가/왜 누르나/왜 끝까지) → 데이터 근거 → 차이(이미 나온 것/새로 보여줄 것) → 유형 → 헛점·해소안 */
+const SECTIONS = [
+  { h: '', fields: [['name', '아이템 이름', 'input', true, '예: 수련수련 집 재습격 / 김계란의 포모스 코리아']] },
+  { h: '소재', fields: [['topic', '소재', 'textarea', true, '게스트가 야마면 게스트, 이슈가 야마면 이슈. 밈이면 출처까지 (예: "집 더러운 여캠" 밈, 출처가 피갤)'], ['links', '참고 링크', 'textarea', false, '한 줄에 하나. 원본 영상, 커뮤니티 글, 기사']] },
+  { h: '로그라인', fields: [['logline', '로그라인', 'textarea', true, '누가(김계란/게스트) + 무엇을 + 어떤 상황에서 → 무슨 일이 벌어지나. 포맷 제안이면 "매회 ~"로']] },
+  { h: 'thumbs' }, { h: 'titles' },
+  { h: '왜 되나', fields: [['who', '누가 누르나', 'textarea', true, '페르소나 A/B/C 중 누구, 어떤 반응 포인트 (남녀 관점 차이, 반전, 내 돈·내 안전 등)'], ['whyClick', '왜 누르나', 'textarea', true, '미해결 질문, 아는 맛에 새 각도, "그래서 나는?"'], ['whyStay', '왜 끝까지 보나', 'textarea', true, '공개 순간까지의 기대감. 찍먹 이탈 리스크가 있으면 같이 적기']] },
+  { h: '데이터 근거', fields: [['data', '데이터 근거', 'textarea', true, '채널 내부 수치(환율 261만), 커뮤니티 반복 소비, 댓글 반응, 기사(출처·날짜). 숫자나 링크 1개 이상']] },
+  { h: '기존 콘텐츠와 차이', fields: [['diffOld', '이미 나온 것', 'textarea', true, '원본 영상, 비슷한 채널의 편, 커뮤니티 캡처'], ['diffNew', '우리가 새로 보여줄 것', 'textarea', true, 'Before/After, 공개 검수, 당사자만 할 수 있는 후속편, 해본 사람의 증언 + 판정 등']] },
+  { h: 'types' },
+  { h: '헛점과 해소안', fields: [['flaw', '헛점', 'textarea', false, '스스로 짚는 약점. 예: 수련수련을 아는 사람이 많지 않다'], ['fix', '해소안', 'textarea', false, '포장(이름 대신 상황), 게스트 조합, "그래서 나는?" 정보 레이어 등으로 어떻게 막나']] },
+  { h: '메모', fields: [['extra', '자유 메모', 'textarea', false, '장면 아이디어, 촬영 방식, 농담 등 (선택)']] },
+];
+const TEXT_KEYS = SECTIONS.flatMap(s => (s.fields || []).map(f => f[0]));
+const THUMB_KEYS = ['th1a', 'th1b', 'th2a', 'th2b', 'th3a', 'th3b'], TITLE_KEYS = ['ti1', 'ti2', 'ti3'];
+const ALL_KEYS = TEXT_KEYS.concat(THUMB_KEYS, TITLE_KEYS);
+function fieldHTML([k, label, kind, req, ph], val) {
+  return `<div class="field"><label for="f_${k}">${esc(label)}${req ? ' <b>*</b>' : ''}</label>${kind === 'input' ? `<input id="f_${k}" placeholder="${esc(ph)}" value="${esc(val || '')}">` : `<textarea id="f_${k}" placeholder="${esc(ph)}">${esc(val || '')}</textarea>`}<div class="hint" id="h_${k}"><span></span><span class="num"></span></div></div>`;
+}
+function renderCompose() {
+  const el = $('#scr-compose');
+  const w = targetWeek(), mineN = countMine(w), lim = myLimit();
+  const full = mineN >= lim;
+  if (!el.dataset.built) {
+    const d = lsGet('draft') || {};
+    S.compose.types = Array.isArray(d.types) && d.types.length ? d.types : [TYPES[0]]; S.compose.kind = d.kind || KINDS[0]; S.compose.revisedFrom = d.revisedFrom || null;
+    const thumbSet = n => `<div class="setrow"><span class="setlab">${n}안${n === 1 ? ' <b>*</b>' : ''}</span><input id="f_th${n}a" placeholder="1줄 · 7~10자" value="${esc(d['th' + n + 'a'] || '')}"><input id="f_th${n}b" placeholder="2줄 · 7~10자" value="${esc(d['th' + n + 'b'] || '')}"><span class="num small muted" id="h_th${n}"></span></div>`;
+    const titleSet = n => `<div class="setrow one"><span class="setlab">${n}안${n === 1 ? ' <b>*</b>' : ''}</span><input id="f_ti${n}" placeholder="${n === 1 ? '썸네일과 다른 문장으로 하나의 질문을 완성' : '다른 각도의 제목 (선택)'}" value="${esc(d['ti' + n] || '')}"></div>`;
+    el.innerHTML = `<div class="stack">
+      <div class="between"><h2>카드 올리기</h2><span class="pill" id="cTarget"></span></div>
+      <div id="cNote"></div>
+      <div id="cPreview"></div>
+      ${SECTIONS.map(s => {
+        if (s.h === 'thumbs') return `<div class="sec"><h3>후킹할만한 썸네일 <span class="muted small" style="font-weight:400">1안이 대표 썸네일, 시리즈면 공통 패턴</span></h3>${[1, 2, 3].map(thumbSet).join('')}</div>`;
+        if (s.h === 'titles') return `<div class="sec"><h3>후킹할만한 제목</h3>${[1, 2, 3].map(titleSet).join('')}<div class="hint" id="h_title"><span></span><span class="num"></span></div></div>`;
+        if (s.h === 'types') return `<div class="sec"><h3>유형 <b style="color:var(--accent-text)">*</b> <span class="muted small" style="font-weight:400">섞이면 둘 다</span></h3><div class="row" id="segType">${TYPES.map(t => `<button type="button" class="btn sm" data-act="setType" data-v="${esc(t)}">${esc(t)}</button>`).join('')}</div><div class="field" style="margin-top:8px"><label>종류</label><div class="seg" id="segKind">${KINDS.map(t => `<button type="button" data-act="setKind" data-v="${esc(t)}">${esc(t)}</button>`).join('')}</div></div></div>`;
+        return `<div class="sec">${s.h ? `<h3>${esc(s.h)}</h3>` : ''}${s.fields.map(f => fieldHTML(f, d[f[0]])).join('')}</div>`;
+      }).join('')}
+      <label class="check"><input type="checkbox" id="f_urgent" ${d.urgent ? 'checked' : ''}> 긴급 (시의성 이슈 · 월드컵 없이 바로 회의 안건으로)</label>
+      <div id="cRevised"></div>
+      <div class="row"><button class="btn primary" data-act="submitCard" id="btnSubmit">익명으로 올리기</button><button class="btn ghost" data-act="clearDraft">비우기</button></div>
+      <p class="small muted">작성자는 저장되지만 본인과 계란님 계정만 읽을 수 있고, 화면에는 선정된 카드에만 표시됩니다. 쓰던 내용은 이 기기에 자동 저장됩니다.</p>
+    </div>`;
+    el.dataset.built = '1';
+    el.addEventListener('input', onComposeInput);
+  }
+  $('#cTarget').textContent = `${weekLabel(w)} 월드컵 · 내 카드 ${mineN}/${lim}`;
+  const note = $('#cNote');
+  if (S.canWrite === false) note.innerHTML = `<div class="note">보기 전용 권한이라 올릴 수 없습니다.</div>`;
+  else if (full) note.innerHTML = `<div class="note">${esc(weekLabel(w))} 몫 ${lim}장을 다 채웠습니다. 지난 카드를 고쳐 올리는 것도 이 몫에 포함됩니다.</div>`;
+  else if (phase() !== 'upload') note.innerHTML = `<div class="note">오늘 월드컵이 진행 중이라 지금 올리는 카드는 ${esc(weekLabel(w))} 풀에 들어갑니다.</div>`;
+  else note.innerHTML = '';
+  $('#btnSubmit').disabled = full || S.canWrite === false;
+  document.querySelectorAll('#segType button').forEach(b => b.classList.toggle('primary', S.compose.types.includes(b.dataset.v)));
+  document.querySelectorAll('#segKind button').forEach(b => b.classList.toggle('on', b.dataset.v === S.compose.kind));
+  $('#cRevised').innerHTML = S.compose.revisedFrom ? `<div class="note acc">지난 카드의 수정본으로 올립니다. <button class="btn sm ghost" data-act="dropRevised">연결 끊기</button></div>` : '';
+  updateComposeHints();
+}
+function onComposeInput() { saveDraft(); updateComposeHints(); }
+function readForm() {
+  const o = {}; ALL_KEYS.forEach(k => { const f = $('#f_' + k); o[k] = f ? f.value.trim() : ''; });
+  o.urgent = !!($('#f_urgent') && $('#f_urgent').checked); o.types = S.compose.types.slice(); o.kind = S.compose.kind; o.revisedFrom = S.compose.revisedFrom;
+  o.thumbs = [1, 2, 3].map(n => ({ t1: o['th' + n + 'a'], t2: o['th' + n + 'b'] })).filter(t => t.t1 || t.t2);
+  o.titles = [1, 2, 3].map(n => o['ti' + n]).filter(Boolean);
+  return o;
+}
+function saveDraft() { lsSet('draft', readForm()); }
+function updateComposeHints() {
+  const o = readForm();
+  $('#cPreview').innerHTML = `<div style="max-width:320px">${thumbSVG(o.th1a || '썸네일 1줄', o.th1b || '썸네일 2줄')}<div class="tile-title">${esc(o.ti1 || '제목 1안이 여기에 보입니다')}</div><div class="tile-meta"><span>피지컬갤러리 · 연습생 ?-??</span></div></div>`;
+  const setH = (k, msg, cls, cnt) => { const h = $('#h_' + k); if (!h) return; h.className = 'hint' + (cls ? ' ' + cls : ''); h.children[0].textContent = msg || ''; h.children[1].textContent = cnt || ''; };
+  [1, 2, 3].forEach(n => { const a = o['th' + n + 'a'].length, b = o['th' + n + 'b'].length; const h = $('#h_th' + n); if (!h) return; h.textContent = (a || b) ? `${a}/${b}` : ''; h.style.color = (a > 10 || b > 10) ? 'var(--warn)' : ''; h.title = '한 줄 7~10자'; });
+  const over = [1, 2, 3].some(n => o['th' + n + 'a'].length > 10 || o['th' + n + 'b'].length > 10);
+  const dup = o.ti1 && ((o.th1a && o.ti1.includes(o.th1a)) || (o.th1b && o.ti1.includes(o.th1b)));
+  setH('title', dup ? '제목이 썸네일과 같은 말을 반복합니다. 둘이 다른 문장으로 하나의 질문을 만들어야 합니다' : (over ? '썸네일 한 줄이 10자를 넘으면 폰에서 1~2초 안에 안 읽힙니다' : ''), (dup || over) ? 'warn' : '', `${o.ti1.length}/80`);
+  setH('data', o.data && !hasDigit(o.data) && !/http/.test(o.data) ? '수치나 링크가 없으면 가설만 남습니다' : '', 'warn', '');
+  setH('links', o.links && !/http/.test(o.links) ? 'http로 시작하는 주소를 한 줄에 하나씩' : '', 'warn', '');
+}
+function fillComposeFrom(c) {
+  const el = $('#scr-compose'); if (!el.dataset.built) { renderCompose(); }
+  TEXT_KEYS.forEach(k => { const f = $('#f_' + k); if (f) f.value = c[k] || ''; });
+  const th = c.thumbs || [{ t1: c.t1, t2: c.t2 }], ti = c.titles || [c.title];
+  [1, 2, 3].forEach(n => { const a = $('#f_th' + n + 'a'), b = $('#f_th' + n + 'b'), t = $('#f_ti' + n); if (a) a.value = (th[n - 1] || {}).t1 || ''; if (b) b.value = (th[n - 1] || {}).t2 || ''; if (t) t.value = ti[n - 1] || ''; });
+  $('#f_urgent').checked = !!c.urgent; S.compose.types = (c.types && c.types.length) ? c.types.slice() : [c.type || TYPES[0]]; S.compose.kind = c.kind || KINDS[0]; S.compose.revisedFrom = c.id;
+  saveDraft();
+}
+function clearComposeForm() { ALL_KEYS.forEach(k => { const f = $('#f_' + k); if (f) f.value = ''; }); const u = $('#f_urgent'); if (u) u.checked = false; }
+async function submitCard() {
+  if (S.busy) return;
+  const o = readForm();
+  const req = SECTIONS.flatMap(s => (s.fields || []).filter(f => f[3]));
+  const missing = req.filter(f => !o[f[0]]).map(f => f[1]);
+  if (!o.th1a || !o.th1b) missing.unshift('썸네일 1안 2줄');
+  if (!o.ti1) missing.unshift('제목 1안');
+  if (missing.length) { toast('필수 칸이 비었습니다: ' + missing.slice(0, 3).join(', ') + (missing.length > 3 ? ' 외' : '')); return; }
+  if (!hasDigit(o.data) && !/http/.test(o.data)) { toast('데이터 근거에 숫자나 링크를 하나는 넣어주세요'); return; }
+  if (!o.types.length) { toast('유형을 하나 이상 고르세요'); return; }
+  const w = targetWeek();
+  if (countMine(w) >= myLimit()) { toast('이번 회차 몫을 다 채웠습니다'); return; }
+  S.busy = true; $('#btnSubmit').disabled = true;
+  try {
+    const used = new Set(S.cards.filter(c => c.weekId === w).map(c => c.no));
+    let no; do { no = String.fromCharCode(65 + Math.floor(Math.random() * 6)) + '-' + String(Math.floor(Math.random() * 90) + 10); } while (used.has(no));
+    const ref = S.db.collection('cards').doc();
+    const card = { weekId: w, no, name: o.name, t1: o.th1a, t2: o.th1b, title: o.ti1, thumbs: o.thumbs, titles: o.titles, topic: o.topic, links: o.links, logline: o.logline, who: o.who, whyClick: o.whyClick, whyStay: o.whyStay, data: o.data, diffOld: o.diffOld, diffNew: o.diffNew, flaw: o.flaw, fix: o.fix, extra: o.extra, types: o.types, type: o.types.join(' · '), kind: o.kind, urgent: o.urgent, status: 'active', createdAt: Date.now(), revisedFrom: o.revisedFrom || null };
+    await ref.set(card);
+    const mine = Object.assign({}, S.mine); mine.cards = Object.assign({}, mine.cards || {}); mine.cards[ref.id] = w;
+    await S.db.doc('authors/' + S.uid).set(mine);
+    lsDel('draft'); S.compose.revisedFrom = null; clearComposeForm();
+    toast(`연습생 ${no}로 올라갔습니다`); setTab('board');
+  } catch (e) { toast('올리지 못했습니다: ' + (e.code || e.message)); }
+  S.busy = false;
+}
+
+/* detail sheet */
+function openDetail(id) {
+  S.openCard = id;
+  if (S.unsubComments) { S.unsubComments(); S.unsubComments = null; }
+  S.comments = (S.allComments || []).filter(c => c.cardId === id).sort((a, b) => (b.likes || 0) - (a.likes || 0) || (a.createdAt || 0) - (b.createdAt || 0));
+  $('#sheet').hidden = false; renderDetail(); window.scrollTo({ top: 0 });
+}
+function closeDetail() { S.openCard = null; $('#sheet').hidden = true; $('#sheetIn').innerHTML = ''; }
+function linksHTML(s) {
+  return String(s || '').split(/\n+/).map(l => l.trim()).filter(Boolean).map(l => /^https?:\/\//.test(l) ? `<a class="lnk" href="${esc(l)}" target="_blank" rel="noopener">${esc(l.replace(/^https?:\/\//, '').slice(0, 48))}${l.length > 56 ? '…' : ''}</a>` : esc(l)).join('<br>');
+}
+function altsHTML(c) {
+  const th = (c.thumbs || []).slice(1), ti = (c.titles || []).slice(1);
+  if (!th.length && !ti.length) return '';
+  return `<div class="alts">${th.map((t, i) => `<div class="alt"><span class="setlab">썸네일 ${i + 2}안</span><span>${esc(t.t1)} / ${esc(t.t2)}</span></div>`).join('')}${ti.map((t, i) => `<div class="alt"><span class="setlab">제목 ${i + 2}안</span><span>${esc(t)}</span></div>`).join('')}</div>`;
+}
+function cardFullHTML(c) {
+  const row = (k, v, raw) => v ? `<dt>${k}</dt><dd>${raw ? v : esc(v)}</dd>` : '';
+  return `${altsHTML(c)}<dl class="kv">
+    ${row('소재', c.topic)}${row('링크', c.links ? linksHTML(c.links) : '', true)}${row('로그라인', c.logline)}
+    ${row('누가 누르나', c.who)}${row('왜 누르나', c.whyClick)}${row('왜 끝까지', c.whyStay)}${row('왜 되나', c.why)}
+    ${row('데이터 근거', c.data)}${row('이미 나온 것', c.diffOld)}${row('새로 보여줄 것', c.diffNew)}${row('기존과 차이', c.diff)}
+    ${row('헛점', c.flaw)}${row('해소안', c.fix)}${row('메모', c.extra)}
+  </dl>`;
+}
+function briefHTML(c) {
+  return `<div class="one">${esc(c.logline || c.oneLiner || '')}</div><div class="hook">${c.who ? `<div><b>누가 누르나</b> ${esc(c.who)}</div>` : ''}${c.whyClick ? `<div><b>왜 누르나</b> ${esc(c.whyClick)}</div>` : ''}${!c.who && !c.whyClick && c.hook ? `<div><b>흥행 근거</b> ${esc(c.hook)}</div>` : ''}</div>`;
+}
+function commentHTML(cm, card) {
+  const mine = !!S.meta.comments[cm.id], liked = !!S.meta.likes[cm.id];
+  const typePill = cm.byAuthor ? '<span class="pill acc">작성자</span>' : cm.type === 'tackle' ? '<span class="pill warn">태클</span>' : '<span class="pill good">디벨롭</span>';
+  const body = cm.type === 'tackle' && !cm.byAuthor
+    ? `<dl class="tk"><dt>약점</dt><dd>${esc(cm.weakness)}</dd><dt>이유</dt><dd>${esc(cm.reason)}</dd><dt>대안</dt><dd>${esc(cm.alt)}</dd></dl>`
+    : `<div class="txt">${esc(cm.text)}</div>`;
+  const canAdopt = isMine(card.id) && !cm.byAuthor;
+  return `<div class="cm"><div class="head">${typePill}${cm.adopted ? '<span class="pill on">반영함</span>' : ''}${mine ? '<span class="pill">내 코멘트</span>' : ''}${ownerTag('comments', cm.id)}<span class="num">${fmtDate(cm.createdAt)}</span></div>${body}
+    <div class="foot"><button class="btn sm ${liked ? 'primary' : ''}" data-act="like" data-id="${esc(cm.id)}" ${mine ? 'disabled' : ''}>공감 ${cm.likes || 0}</button>${canAdopt ? `<button class="btn sm ghost" data-act="adopt" data-id="${esc(cm.id)}">${cm.adopted ? '반영 취소' : '반영함'}</button>` : ''}</div></div>`;
+}
+function composerHTML(cardId, ctx) {
+  const mine = isMine(cardId);
+  return `<div class="composer" data-composer="${esc(cardId)}" data-ctx="${esc(ctx || '')}">
+    ${mine ? '<p class="small muted">내 카드에는 작성자 답변으로 남습니다 (익명, 작성자 배지만 표시)</p>' : `<div class="seg"><button type="button" class="on" data-act="cmType" data-v="develop">디벨롭</button><button type="button" data-act="cmType" data-v="tackle">태클</button></div>`}
+    <div data-part="develop"><textarea data-f="text" placeholder="${mine ? '태클에 답하거나 보충할 내용' : '오 이거 좋은데요? 여기서 이렇게 더 가면…'}"></textarea></div>
+    <div data-part="tackle" hidden><input data-f="weakness" placeholder="약점 (무엇이 약한가)"><input data-f="reason" placeholder="이유 (왜 그렇게 판단했나)"><input data-f="alt" placeholder="대안 (어떻게 바꾸면 나아지나)"></div>
+    <div class="row"><button class="btn sm primary" data-act="sendComment">익명으로 남기기</button></div>
+  </div>`;
+}
+function renderDetail() {
+  const c = cardById(S.openCard); const box = $('#sheetIn');
+  if (!c) { box.innerHTML = `<div class="sheet-bar"><button class="btn sm" data-act="close">닫기</button></div><div class="empty">카드를 찾을 수 없습니다</div>`; return; }
+  const mine = isMine(c.id), see = canSeeComments(c);
+  const pills = [];
+  if (c.status === 'selected') pills.push('<span class="pill on">선정</span>');
+  if (c.urgent) pills.push('<span class="pill bad">긴급</span>');
+  if (mine) pills.push('<span class="pill acc">내 카드</span>');
+  (c.types && c.types.length ? c.types : [c.type]).filter(Boolean).forEach(t => pills.push(`<span class="pill">${esc(t)}</span>`)); if (c.kind) pills.push(`<span class="pill">${esc(c.kind)}</span>`);
+  if (c.revisedFrom) pills.push('<span class="pill">수정본</span>');
+  if (c.status !== 'selected') { const t = ownerTag('cards', c.id); if (t) pills.push(t); }
+  const authorLine = c.status === 'selected' ? `<div class="note acc">선정된 카드 · 작성자 <b data-name="${esc(c.authorUid || '')}">${c.authorUid ? '…' : '(작성자가 앱을 열면 표시)'}</b></div>` : '';
+  const actions = [];
+  if (mine && c.status !== 'selected' && c.weekId >= curWeek() && (phase() === 'upload' || c.weekId > curWeek())) actions.push(`<button class="btn sm danger" data-act="deleteCard" data-id="${esc(c.id)}">삭제</button>`);
+  if (mine && c.status !== 'selected' && isPastRound(c.weekId)) actions.push(`<button class="btn sm" data-act="revise" data-id="${esc(c.id)}">고쳐서 다시 올리기</button>`);
+  let cms;
+  if (see) cms = S.comments.length ? S.comments.map(cm => commentHTML(cm, c)).join('') : `<p class="small muted">아직 코멘트가 없습니다.</p>`;
+  else cms = `<div class="note">코멘트 ${S.comments.length}개 · 이번 회차 내 월드컵을 끝내면 볼 수 있습니다. 내 코멘트는 바로 남길 수 있습니다.</div>${S.comments.filter(x => S.meta.comments[x.id]).map(cm => commentHTML(cm, c)).join('')}`;
+  box.innerHTML = `<div class="sheet-bar"><div class="row"><span class="muted small">연습생 ${esc(c.no || '')} · ${esc(weekLabel(c.weekId))}</span></div><button class="btn sm" data-act="close">닫기</button></div>
+    ${thumbSVG(c.t1, c.t2)}
+    <div><h2>${esc(c.title)}</h2><p class="muted" style="margin-top:4px">${esc(c.name)}</p></div>
+    <div class="row">${pills.join('')}</div>
+    ${authorLine}
+    <div class="card mcard" style="padding:14px">${briefHTML(c)}${cardFullHTML(c)}</div>
+    ${actions.length ? `<div class="row">${actions.join('')}</div>` : ''}
+    <h3>코멘트 ${S.comments.length ? `<span class="muted num" style="font-weight:400">${S.comments.length}</span>` : ''}</h3>
+    ${S.canWrite === false ? '' : composerHTML(c.id, 'detail')}
+    <div class="stack">${cms}</div>`;
+  profilesInto([c.authorUid].concat(S.isOwner && S.authorsIndex ? [S.authorsIndex.cards[c.id]].concat(S.comments.map(x => S.authorsIndex.comments[x.id])) : []));
+}
+async function sendComment(btn) {
+  if (S.busy) return;
+  const box = btn.closest('[data-composer]'); const cardId = box.dataset.composer; const card = cardById(cardId); if (!card) return;
+  const mine = isMine(cardId);
+  const type = mine ? 'reply' : (box.querySelector('[data-act="cmType"].on') || {}).dataset?.v || 'develop';
+  const g = f => { const el = box.querySelector(`[data-f="${f}"]`); return el ? el.value.trim() : ''; };
+  const doc = { cardId, weekId: card.weekId, type, byAuthor: mine, adopted: false, likes: 0, createdAt: Date.now() };
+  if (type === 'tackle') { doc.weakness = g('weakness'); doc.reason = g('reason'); doc.alt = g('alt'); if (!doc.weakness || !doc.reason || !doc.alt) { toast('태클은 약점·이유·대안 세 칸을 다 채워야 등록됩니다'); return; } }
+  else { doc.text = g('text'); if (!doc.text) { toast('내용을 적어주세요'); return; } }
+  S.busy = true;
+  try {
+    const ref = await S.db.collection('comments').add(doc);
+    const meta = Object.assign({}, S.meta); meta.comments = Object.assign({}, meta.comments || {}); meta.comments[ref.id] = true; meta.likes = meta.likes || {};
+    await S.db.doc('users/' + S.uid + '/private/meta').set(meta);
+    const mine = Object.assign({}, S.mine); mine.cards = mine.cards || {}; mine.comments = Object.assign({}, mine.comments || {}); mine.comments[ref.id] = cardId;
+    await S.db.doc('authors/' + S.uid).set(mine);
+    box.querySelectorAll('textarea,input').forEach(i => i.value = '');
+    toast('익명으로 남겼습니다');
+  } catch (e) { toast('남기지 못했습니다: ' + (e.code || e.message)); }
+  S.busy = false;
+}
+async function toggleLike(id) {
+  if (S.busy) return; const cm = (S.allComments || []).find(x => x.id === id); if (!cm) return;
+  const liked = !!S.meta.likes[id]; S.busy = true;
+  try {
+    await S.db.doc('comments/' + id).update({ likes: Math.max(0, (cm.likes || 0) + (liked ? -1 : 1)) });
+    const meta = Object.assign({}, S.meta); meta.likes = Object.assign({}, meta.likes || {}); meta.comments = meta.comments || {};
+    if (liked) delete meta.likes[id]; else meta.likes[id] = true;
+    await S.db.doc('users/' + S.uid + '/private/meta').set(meta);
+  } catch (e) { toast('실패: ' + (e.code || e.message)); }
+  S.busy = false;
+}
+async function toggleAdopt(id) {
+  const cm = (S.allComments || []).find(x => x.id === id); if (!cm) return;
+  try { await S.db.doc('comments/' + id).update({ adopted: !cm.adopted }); } catch (e) { toast('실패: ' + (e.code || e.message)); }
+}
+async function deleteCard(id) {
+  if (S.busy) return; S.busy = true;
+  try {
+    await S.db.doc('cards/' + id).delete();
+    const mine = Object.assign({}, S.mine); mine.cards = Object.assign({}, mine.cards || {}); delete mine.cards[id];
+    await S.db.doc('authors/' + S.uid).set(mine);
+    closeDetail(); toast('삭제했습니다');
+  } catch (e) { toast('삭제 실패: ' + (e.code || e.message)); }
+  S.busy = false;
+}
+
+/* worldcup */
+function makePairs(ids) { const a = shuffle(ids), p = []; for (let i = 0; i < a.length; i += 2) p.push(a[i + 1] != null ? [a[i], a[i + 1]] : [a[i]]); return p; }
+function roundPts(r) { return Math.min(r, 5); }
+function startRound(run, remaining, dual) {
+  run.remaining = remaining; run.pairs = makePairs(remaining); run.idx = 0; run.next = [];
+  const bye = run.pairs.find(p => p.length === 1);
+  if (bye) { run.next.push(bye[0]); run.points[bye[0]] = (run.points[bye[0]] || 0) + roundPts(run.round); run.pairs = run.pairs.filter(p => p.length === 2); run.byeId = bye[0]; } else run.byeId = null;
+  run.dualLeft = remaining.length > 4 ? Math.max(0, Math.min(dual ?? 2, run.pairs.length - 1)) : 0;
+}
+function applyDecision(run, choice, dual) {
+  const pair = run.pairs[run.idx]; if (!pair) return false;
+  const pts = roundPts(run.round);
+  const pass = id => { run.next.push(id); run.points[id] = (run.points[id] || 0) + pts; };
+  if (choice === 'top') pass(pair[0]); else if (choice === 'bottom') pass(pair[1]); else { if (run.dualLeft <= 0) return false; pass(pair[0]); pass(pair[1]); run.dualLeft--; }
+  run.idx++;
+  if (run.idx >= run.pairs.length) {
+    if (run.next.length <= 1) { run.done = true; run.finishedAt = Date.now(); return true; }
+    run.round++; startRound(run, run.next, dual);
+  }
+  return false;
+}
+async function startRun() {
+  if (S.busy) return;
+  const w = curWeek(); const pool = poolFor(w).filter(c => !isMine(c.id)).map(c => c.id);
+  if (pool.length < 2) { toast('월드컵을 하려면 내 카드를 뺀 카드가 2장 이상 있어야 합니다'); return; }
+  const run = { weekId: w, round: 1, points: {}, seen: pool.slice(), done: false, startedAt: Date.now() };
+  startRound(run, pool, S.settings.dualPass ?? 2);
+  await saveRun(run);
+}
+async function saveRun(run) { S.busy = true; try { await S.db.doc('users/' + S.uid + '/private/run').set(run); S.run = run; } catch (e) { toast('저장 실패: ' + (e.code || e.message)); } S.busy = false; render(); }
+async function decide(choice) {
+  if (S.busy || !S.run || S.run.done) return;
+  const run = JSON.parse(JSON.stringify(S.run)); if (!run.pairs[run.idx]) return;
+  const done = applyDecision(run, choice, S.settings.dualPass ?? 2);
+  await saveRun(run); if (done) await publishRun(run);
+}
+async function publishRun(run) {
+  try {
+    const ref = S.db.doc('runs/' + S.uid); const s = await ref.get(); const prev = s.exists ? s.data() : {};
+    const weeks = Object.assign({}, prev.weeks || {}); weeks[run.weekId] = { points: run.points, seen: run.seen, finishedAt: run.finishedAt };
+    await ref.set({ weeks });
+    toast('월드컵 완료! 이제 다른 사람 코멘트를 볼 수 있습니다', 3000);
+  } catch (e) { toast('결과 공개 저장 실패: ' + (e.code || e.message)); }
+}
+function matchCardHTML(c, pos, showDetail) {
+  const key = pos + ':' + c.id; const open = !!S.wcCommentOpen[key];
+  return `<div class="mcard">${thumbSVG(c.t1, c.t2)}<div class="ttl">${esc(c.title)}</div>${briefHTML(c)}
+    ${showDetail ? `<details class="more"><summary>카드 전체 보기 · ${esc(c.type || '')}</summary>${cardFullHTML(c)}<div class="row" style="margin-top:8px"><button class="btn sm" data-act="wcComment" data-key="${esc(key)}">${open ? '코멘트 닫기' : '코멘트 남기기'}</button></div>${open ? composerHTML(c.id, 'wc') : ''}</details>` : ''}
+  </div>`;
+}
+function renderWorldcup() {
+  const el = $('#scr-worldcup'); const w = curWeek(); const ph = phase(); const run = S.run;
+  const pool = poolFor(w).filter(c => !isMine(c.id));
+  const doneN = S.runs.filter(r => r.weeks && r.weeks[w]).length;
+  if (ph === 'upload') { el.innerHTML = `<div class="stack"><h2>기획 월드컵</h2><div class="empty"><b>다음 월드컵은 ${esc(weekLabel(w))}</b>당일 00:00부터 ${S.settings.endHour ?? 18}:00까지 한 판씩 합니다. 지금 모인 카드 ${poolFor(w).length}장.<br>${esc(S.settings.schedule || '')}</div></div>`; return; }
+  if (ph === 'results') { el.innerHTML = `<div class="stack"><h2>기획 월드컵</h2><div class="empty"><b>${esc(weekLabel(w))} 월드컵이 끝났습니다</b>결과 탭에서 순위와 코멘트를 확인하세요. 완료 ${doneN}명.</div></div>`; return; }
+  if (!run || run.weekId !== w) {
+    el.innerHTML = `<div class="stack"><h2>기획 월드컵 <span class="muted small" style="font-weight:400">${esc(weekLabel(w))}</span></h2>
+      <div class="card stack"><div class="roundhead"><div class="big">${pool.length}<em>강</em></div><span class="pill">완료 ${doneN}명</span></div>
+      <p class="muted small">내 카드를 뺀 ${pool.length}장으로 한 판. 첫 라운드는 썸네일·제목·로그라인·누가 왜 누르나만 보고, ${S.settings.detailFrom || 2}라운드부터 카드 전체를 보고 코멘트를 남길 수 있습니다. 10~15분 걸리고, 오늘 ${S.settings.endHour ?? 18}:00까지 끝내야 합산됩니다.</p>
+      <ul class="small muted" style="margin:0;padding-left:18px"><li>n번째 통과에 n점 (최대 5점). 전원 합산으로 순위가 나옵니다.</li><li>'둘 다 통과'는 라운드마다 ${S.settings.dualPass ?? 2}회, 4강부터는 없습니다.</li><li>중간에 나가도 이어서 할 수 있습니다.</li></ul>
+      <button class="btn primary wide" data-act="startRun" ${S.canWrite === false || pool.length < 2 ? 'disabled' : ''}>시작하기</button></div></div>`;
+    return;
+  }
+  if (run.done) { el.innerHTML = `<div class="stack"><h2>기획 월드컵</h2><div class="card stack"><div class="roundhead"><div class="big">완료</div><span class="pill good">완료 ${doneN}명</span></div><p class="muted small">결과는 결과 공개 때 전원 합산으로 나옵니다. 이제 게시판에서 다른 사람의 코멘트를 보고 남길 수 있습니다.</p><button class="btn wide" data-act="goBoard">게시판으로</button></div></div>`; return; }
+  const pair = run.pairs[run.idx]; const a = cardById(pair[0]), b = cardById(pair[1]);
+  if (!a || !b) { el.innerHTML = `<div class="stack"><h2>기획 월드컵</h2><div class="note">카드가 삭제되어 대진을 다시 짭니다.</div><button class="btn" data-act="restartRun">다시 시작</button></div>`; return; }
+  const total = run.pairs.length, cur = run.idx + 1, pct = Math.round((run.idx / total) * 100);
+  const final = run.remaining.length === 2; const showDetail = run.round >= (S.settings.detailFrom || 2);
+  const label = final ? '결승' : `${run.round}라운드`;
+  el.innerHTML = `<div class="stack">
+    <div class="roundhead"><div class="big">${esc(label)} <em>${run.remaining.length}</em>장</div><span class="muted small num">매치 ${cur}/${total}</span></div>
+    <div class="bar"><i style="width:${pct}%"></i></div>
+    ${showDetail ? '' : '<p class="small muted">첫 라운드는 포장만 봅니다. 폰 홈 피드에서 누를 것 같은 쪽을 고르세요.</p>'}
+    ${run.byeId && run.idx === 0 ? `<p class="small muted">연습생 ${esc((cardById(run.byeId) || {}).no || '')}는 부전승으로 올라갔습니다.</p>` : ''}
+    <div class="match">${matchCardHTML(a, 'a', showDetail)}<div class="vs">VS</div>${matchCardHTML(b, 'b', showDetail)}</div>
+    <div class="decide"><button class="btn" data-act="decide" data-v="top" ${S.busy ? 'disabled' : ''}>위 통과</button><button class="btn ${run.dualLeft > 0 ? 'primary' : ''}" data-act="decide" data-v="both" ${run.dualLeft > 0 && !S.busy ? '' : 'disabled'}>둘 다 통과${run.dualLeft > 0 ? ` · ${run.dualLeft}회` : final ? '' : ' · 없음'}</button><button class="btn" data-act="decide" data-v="bottom" ${S.busy ? 'disabled' : ''}>아래 통과</button></div>
+    <p class="small muted" style="text-align:center">위 통과 = 위 카드가 올라감 · ${showDetail ? '카드 전체를 펼쳐 끝까지 볼 기획인지 보세요' : '지금은 썸네일과 제목만 봅니다'}</p>
+  </div>`;
+}
+
+/* 썸네일·제목 배틀 — one battle per video; anonymous 시안 (image or 2-line text) + title + 비고; same bracket engine as the card worldcup */
+const isMineEntry = id => !!(S.mine.entries && S.mine.entries[id]);
+const pkState = { open: '시안 모집 중', vote: '투표 중', closed: '종료' };
+function entryThumb(e) { return e.img ? `<img class="thumb-img" src="${e.img}" alt="">` : thumbSVG(e.t1, e.t2); }
+function openBattle(id) {
+  S.pkOpen = id; S.pkNew = false; S.pkImg = null;
+  if (S.unsubEntries) { S.unsubEntries(); S.unsubEntries = null; }
+  S.pkEntries = [];
+  S.unsubEntries = S.db.collection('entries').where('battleId', '==', id).onSnapshot(q => { S.pkEntries = q.docs.map(d => Object.assign({ id: d.id }, d.data())).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)); render(); }, e => {});
+  render(); window.scrollTo({ top: 0 });
+}
+function closeBattle() { S.pkOpen = null; if (S.unsubEntries) { S.unsubEntries(); S.unsubEntries = null; } S.pkEntries = []; render(); }
+function pkStandings(b) {
+  const done = S.pkPublic.map(r => r.battles && r.battles[b.id]).filter(Boolean); const n = done.length;
+  const rows = S.pkEntries.map(e => { let total = 0, exp = 0; done.forEach(r => { if (r.seen && r.seen.includes(e.id)) { exp++; total += (r.points && r.points[e.id]) || 0; } }); return { e, total, exp, norm: exp ? total / exp * n : 0 }; });
+  rows.sort((x, y) => y.norm - x.norm || y.total - x.total || (x.e.createdAt || 0) - (y.e.createdAt || 0));
+  return { rows, n };
+}
+function renderPk() {
+  const el = $('#scr-pk');
+  if (S.pkNew) { renderPkNew(el); return; }
+  if (S.pkOpen) { renderBattle(el); return; }
+  const rows = S.battles.map(b => {
+    const myRun = S.pkRuns[b.id]; const doneN = S.pkPublic.filter(r => r.battles && r.battles[b.id]).length;
+    const mineN = Object.values(S.mine.entries || {}).filter(x => x === b.id).length;
+    const cls = b.state === 'vote' ? 'on' : b.state === 'closed' ? '' : 'acc';
+    const sub = b.state === 'open' ? `시안 ${b.entryCount || 0}장 · 내 시안 ${mineN}` : b.state === 'vote' ? `시안 ${b.entryCount || 0}장 · 투표 완료 ${doneN}명${myRun && myRun.done && myRun.battleId === b.id ? ' · 나 완료' : ''}` : `시안 ${b.entryCount || 0}장 · ${doneN}명 합산${b.selectedEntry ? ' · 선정 완료' : ''}`;
+    return `<button class="brow" data-act="openBattle" data-id="${esc(b.id)}"><div class="bt"><div class="ttl">${esc(b.title)}</div><div class="sub">${esc(sub)}</div></div><span class="pill ${cls}">${pkState[b.state] || b.state}</span></button>`;
+  });
+  el.innerHTML = `<div class="stack">
+    <div class="between"><h2>썸네일·제목 배틀</h2>${S.canWrite === false ? '' : '<button class="btn sm primary" data-act="pkNew">+ 새 배틀</button>'}</div>
+    <p class="small muted">콘텐츠 하나당 배틀 하나. 각자 썸네일 시안(이미지 또는 문구 2줄)과 제목을 익명으로 내고, 이상형 월드컵으로 고릅니다. 비고에 왜 먹히는지 근거를 적어두면 ${S.settings.pkNoteFrom ?? 2}라운드부터 보입니다.</p>
+    ${rows.length ? rows.join('') : '<div class="empty"><b>아직 배틀이 없습니다</b>촬영이 정해진 콘텐츠가 있으면 배틀을 열어 썸네일·제목 시안을 모으세요.</div>'}
+  </div>`;
+}
+function renderPkNew(el) {
+  const sel = S.cards.filter(c => c.status === 'selected');
+  el.innerHTML = `<div class="stack">
+    <div class="sheet-bar"><h2>새 배틀</h2><button class="btn sm" data-act="pkCancelNew">취소</button></div>
+    <div class="field"><label for="b_title">무슨 콘텐츠의 썸네일인가 <b>*</b></label><input id="b_title" placeholder="예: 수련수련 집 재습격"></div>
+    <div class="field"><label for="b_desc">야마·로그라인 (시안 내는 사람이 볼 설명)</label><textarea id="b_desc" placeholder="예: 2년 만에 다시 찾아가 청소했다는 말을 검증. 게스트 인지도가 낮아 상황을 주어로, 방 실사를 크게"></textarea></div>
+    ${sel.length ? `<div class="field"><label for="b_card">선정된 카드와 연결 (선택)</label><select id="b_card"><option value="">연결 안 함</option>${sel.map(c => `<option value="${esc(c.id)}">${esc(c.title)}</option>`).join('')}</select></div>` : ''}
+    <div class="field"><label for="b_due">마감 안내 (선택)</label><input id="b_due" placeholder="예: 10/18 (토) 12:00까지 시안, 당일 저녁 투표"></div>
+    <button class="btn primary wide" data-act="pkCreate">배틀 열기</button>
+    <p class="small muted">연 사람과 운영자가 '투표 시작'과 '종료'를 누릅니다. 시안은 1인 ${S.settings.pkPerPerson ?? 3}장까지입니다.</p>
+  </div>`;
+}
+async function pkCreate() {
+  if (S.busy) return; const title = $('#b_title').value.trim(); if (!title) { toast('콘텐츠 이름을 적어주세요'); return; }
+  S.busy = true;
+  try {
+    const ref = S.db.collection('battles').doc();
+    const cardSel = $('#b_card'); await ref.set({ title, desc: $('#b_desc').value.trim(), cardId: cardSel ? (cardSel.value || null) : null, due: $('#b_due').value.trim(), state: 'open', creatorUid: S.uid, createdAt: Date.now(), entryCount: 0, selectedEntry: null });
+    S.pkNew = false; toast('배틀을 열었습니다'); openBattle(ref.id);
+  } catch (e) { toast('실패: ' + (e.code || e.message)); }
+  S.busy = false;
+}
+function pkEntryComposerHTML(b) {
+  const mineN = Object.values(S.mine.entries || {}).filter(x => x === b.id).length, lim = S.settings.pkPerPerson ?? 3;
+  if (mineN >= lim) return `<div class="note">이 배틀 몫 ${lim}장을 다 냈습니다.</div>`;
+  const d = lsGet('pkdraft:' + b.id) || {};
+  return `<div class="card stack" id="pkComposer">
+    <div class="between"><h3>시안 내기 <span class="muted small" style="font-weight:400">${mineN}/${lim}</span></h3><span class="pill">익명</span></div>
+    <div id="pkPreview">${S.pkImg ? `<img class="thumb-img" src="${S.pkImg}" alt="">` : thumbSVG(d.t1 || '썸네일 1줄', d.t2 || '썸네일 2줄')}</div>
+    <label class="drop"><input type="file" id="pkFile" accept="image/*">${S.pkImg ? '이미지 바꾸기' : '썸네일 이미지 올리기 (선택) · 폰 사진도 됩니다'}</label>
+    ${S.pkImg ? '<div class="row"><button class="btn sm ghost" data-act="pkImgClear">이미지 빼기</button><span class="small muted">이미지가 있으면 문구 2줄은 설명용으로만 쓰입니다</span></div>' : ''}
+    <div class="setrow"><span class="setlab">문구${S.pkImg ? '' : ' <b>*</b>'}</span><input id="pk_t1" placeholder="1줄 · 7~10자" value="${esc(d.t1 || '')}"><input id="pk_t2" placeholder="2줄 · 7~10자" value="${esc(d.t2 || '')}"><span class="num small muted" id="pk_cnt"></span></div>
+    <div class="field"><label for="pk_title">제목 <b>*</b></label><input id="pk_title" placeholder="썸네일과 다른 문장으로 하나의 질문을 완성" value="${esc(d.title || '')}"></div>
+    <div class="field"><label for="pk_note">비고 · 왜 먹히나</label><textarea id="pk_note" placeholder="예: '여자 공혁준' 댓글이 이미 있어서 억지 조합이 아님. 이름 대신 상황이 주어라 몰라도 궁금해짐. 청소업체 영상이 터지는 방식 차용">${esc(d.note || '')}</textarea></div>
+    <button class="btn primary wide" data-act="pkSubmit">익명으로 내기</button>
+  </div>`;
+}
+function pkEntryCardHTML(e, b, showNote) {
+  const sel = e.status === 'selected';
+  return `<div class="mcard">${entryThumb(e)}<div class="ttl">${esc(e.title)}</div>${e.img && (e.t1 || e.t2) ? `<div class="one small muted">문구: ${esc(e.t1)} / ${esc(e.t2)}</div>` : ''}
+    <div class="row" style="margin-top:6px"><span class="pill">시안 ${esc(e.no || '')}</span>${isMineEntry(e.id) ? '<span class="pill acc">내 시안</span>' : ''}${sel ? '<span class="pill on">선정</span>' : ownerTag('entries', e.id)}${sel ? `<span class="small">작성자 <b data-name="${esc(e.authorUid || '')}">${e.authorUid ? '…' : '(작성자가 앱을 열면 표시)'}</b></span>` : ''}</div>
+    ${showNote && e.note ? `<div class="notebox"><b>비고</b> ${esc(e.note)}</div>` : ''}
+    ${b.state === 'open' && isMineEntry(e.id) ? `<div class="row" style="margin-top:8px"><button class="btn sm danger" data-act="pkDelete" data-id="${esc(e.id)}">삭제</button></div>` : ''}
+  </div>`;
+}
+function renderBattle(el) {
+  const b = S.battles.find(x => x.id === S.pkOpen);
+  if (!b) { el.innerHTML = `<div class="stack"><div class="sheet-bar"><h2>배틀</h2><button class="btn sm" data-act="closeBattle">목록</button></div><div class="empty">배틀을 찾을 수 없습니다</div></div>`; return; }
+  const canManage = isOps() || b.creatorUid === S.uid;
+  const myRun = S.pkRuns[b.id]; const doneN = S.pkPublic.filter(r => r.battles && r.battles[b.id]).length;
+  const card = b.cardId ? cardById(b.cardId) : null;
+  let body = '';
+  const head = `<div class="sheet-bar"><button class="btn sm" data-act="closeBattle">← 목록</button><span class="pill ${b.state === 'vote' ? 'on' : b.state === 'closed' ? '' : 'acc'}">${pkState[b.state]}</span></div>
+    <div><h2>${esc(b.title)}</h2>${b.desc ? `<p class="muted" style="margin-top:4px;white-space:pre-wrap">${esc(b.desc)}</p>` : ''}${b.due ? `<p class="small muted" style="margin-top:4px">${esc(b.due)}</p>` : ''}${card ? `<p style="margin-top:6px"><button class="btn sm ghost" data-act="open" data-id="${esc(card.id)}">연결된 기획 카드 보기</button></p>` : ''}</div>`;
+  const manage = canManage ? `<div class="row">${b.state === 'open' ? `<button class="btn sm primary" data-act="pkState" data-v="vote" ${S.pkEntries.length < 2 ? 'disabled' : ''}>투표 시작</button>` : ''}${b.state === 'vote' ? `<button class="btn sm primary" data-act="pkState" data-v="closed">종료하고 결과 공개</button><button class="btn sm ghost" data-act="pkState" data-v="open">모집으로 되돌리기</button>` : ''}${b.state === 'closed' ? `<button class="btn sm ghost" data-act="pkState" data-v="vote">투표 다시 열기</button>` : ''}${b.state === 'open' && !S.pkEntries.length ? `<button class="btn sm danger" data-act="pkDeleteBattle">배틀 삭제</button>` : ''}</div>` : '';
+  if (b.state === 'open') {
+    const mine = S.pkEntries.filter(e => isMineEntry(e.id));
+    body = `${S.canWrite === false ? '' : pkEntryComposerHTML(b)}
+      <h3>모인 시안 <span class="muted small" style="font-weight:400">${S.pkEntries.length}장 · 투표 전에는 내 시안만 보입니다</span></h3>
+      ${mine.length ? `<div class="feed">${mine.map(e => pkEntryCardHTML(e, b, true)).join('')}</div>` : '<p class="small muted">아직 낸 시안이 없습니다.</p>'}`;
+  } else if (b.state === 'vote') {
+    body = renderPkVote(b, myRun, doneN);
+  } else {
+    const { rows, n } = pkStandings(b);
+    body = `<h3>결과 <span class="muted small" style="font-weight:400">${n}명 합산</span></h3>
+      <div class="card" style="padding:4px 12px">${rows.map((r, i) => `<div class="rank ${i < 3 ? 'top' : ''}"><div class="n num">${i + 1}</div><div class="th">${entryThumb(r.e)}</div><div class="body"><div class="ttl">${esc(r.e.title)}</div><div class="sc num"><b>${r.norm.toFixed(1)}</b>점 · 원점수 ${r.total} · ${r.exp}/${n}명이 봄</div>${r.e.note ? `<div class="small muted" style="margin-top:4px;white-space:pre-wrap">${esc(r.e.note)}</div>` : ''}<div class="row" style="margin-top:6px">${r.e.status === 'selected' ? `<span class="pill on">선정</span><span class="small">작성자 <b data-name="${esc(r.e.authorUid || '')}">${r.e.authorUid ? '…' : '(작성자가 앱을 열면 표시)'}</b></span>` : ownerTag('entries', r.e.id)}${S.isOwner ? (r.e.status === 'selected' ? `<button class="btn sm ghost" data-act="pkSelect" data-id="${esc(r.e.id)}" data-v="0">선정 취소</button>` : `<button class="btn sm primary" data-act="pkSelect" data-id="${esc(r.e.id)}" data-v="1">선정</button>`) : ''}</div></div></div>`).join('') || '<p class="small muted">시안이 없습니다.</p>'}</div>
+      <p class="small muted">상위 3개를 유튜브 '테스트 및 비교' 후보로 쓰고, 나머지는 교체 벤치로 두세요.</p>`;
+  }
+  el.innerHTML = `<div class="stack">${head}${manage}${body}</div>`;
+  profilesInto(S.pkEntries.map(e => e.authorUid).concat(S.isOwner && S.authorsIndex ? S.pkEntries.map(e => S.authorsIndex.entries[e.id]) : []));
+  const f = $('#pkFile'); if (f) f.addEventListener('change', onPkFile);
+  const comp = $('#pkComposer'); if (comp) comp.addEventListener('input', () => { const t1 = $('#pk_t1').value, t2 = $('#pk_t2').value; lsSet('pkdraft:' + b.id, { t1, t2, title: $('#pk_title').value, note: $('#pk_note').value }); const c = $('#pk_cnt'); if (c) { c.textContent = `${t1.length}/${t2.length}`; c.style.color = (t1.length > 10 || t2.length > 10) ? 'var(--warn)' : ''; } if (!S.pkImg) $('#pkPreview').innerHTML = thumbSVG(t1 || '썸네일 1줄', t2 || '썸네일 2줄'); });
+}
+function renderPkVote(b, run, doneN) {
+  const pool = S.pkEntries.filter(e => !isMineEntry(e.id)).map(e => e.id);
+  const fresh = !run || run.battleId !== b.id;
+  if (fresh) return `<div class="card stack"><div class="roundhead"><div class="big">${pool.length}<em>강</em></div><span class="pill">완료 ${doneN}명</span></div><p class="muted small">내 시안을 뺀 ${pool.length}장. 1라운드는 썸네일과 제목만 보고 폰 피드에서 누를 쪽을 고르고, ${S.settings.pkNoteFrom ?? 2}라운드부터 비고(왜 먹히나)가 열립니다. 5분이면 끝납니다.</p><button class="btn primary wide" data-act="pkStart" ${S.canWrite === false || pool.length < 2 ? 'disabled' : ''}>시작하기</button></div>`;
+  if (run.done) return `<div class="card stack"><div class="roundhead"><div class="big">완료</div><span class="pill good">완료 ${doneN}명</span></div><p class="muted small">배틀이 종료되면 전원 합산 순위가 열립니다.</p></div>`;
+  const pair = run.pairs[run.idx]; const a = S.pkEntries.find(e => e.id === pair[0]), c = S.pkEntries.find(e => e.id === pair[1]);
+  if (!a || !c) return `<div class="note">시안이 바뀌어 대진을 다시 짭니다.</div><button class="btn" data-act="pkStart">다시 시작</button>`;
+  const total = run.pairs.length, cur = run.idx + 1, pct = Math.round((run.idx / total) * 100); const final = run.remaining.length === 2; const showNote = run.round >= (S.settings.pkNoteFrom ?? 2);
+  const mc = e => `<div class="mcard">${entryThumb(e)}<div class="ttl">${esc(e.title)}</div>${showNote && e.note ? `<div class="notebox"><b>비고</b> ${esc(e.note)}</div>` : ''}</div>`;
+  return `<div class="roundhead"><div class="big">${final ? '결승' : run.round + '라운드'} <em>${run.remaining.length}</em>장</div><span class="muted small num">매치 ${cur}/${total}</span></div>
+    <div class="bar"><i style="width:${pct}%"></i></div>
+    <div class="match">${mc(a)}<div class="vs">VS</div>${mc(c)}</div>
+    <div class="decide"><button class="btn" data-act="pkDecide" data-v="top" ${S.busy ? 'disabled' : ''}>위 통과</button><button class="btn ${run.dualLeft > 0 ? 'primary' : ''}" data-act="pkDecide" data-v="both" ${run.dualLeft > 0 && !S.busy ? '' : 'disabled'}>둘 다 통과${run.dualLeft > 0 ? ` · ${run.dualLeft}회` : ''}</button><button class="btn" data-act="pkDecide" data-v="bottom" ${S.busy ? 'disabled' : ''}>아래 통과</button></div>
+    <p class="small muted" style="text-align:center">폰 홈 피드에서 어느 쪽을 누를지로 고르세요</p>`;
+}
+function compressImage(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image(); const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const draw = (w, h, q) => { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(img, 0, 0, w, h); return cv.toDataURL('image/jpeg', q); };
+      let r = Math.min(1, 800 / img.width), w = Math.round(img.width * r), h = Math.round(img.height * r), q = 0.82, out = draw(w, h, q);
+      while (out.length > 180000 && q > 0.45) { q -= 0.1; out = draw(w, h, q); }
+      while (out.length > 180000 && w > 320) { w = Math.round(w * 0.75); h = Math.round(h * 0.75); out = draw(w, h, 0.7); }
+      resolve(out);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('이미지를 읽지 못했습니다')); };
+    img.src = url;
+  });
+}
+async function onPkFile(ev) {
+  const f = ev.target.files && ev.target.files[0]; if (!f) return;
+  try { S.pkImg = await compressImage(f); render(); } catch (e) { toast(e.message || '이미지 실패'); }
+}
+async function pkSubmit() {
+  if (S.busy) return; const b = S.battles.find(x => x.id === S.pkOpen); if (!b || b.state !== 'open') return;
+  const t1 = $('#pk_t1').value.trim(), t2 = $('#pk_t2').value.trim(), title = $('#pk_title').value.trim(), note = $('#pk_note').value.trim();
+  if (!title) { toast('제목을 적어주세요'); return; }
+  if (!S.pkImg && (!t1 || !t2)) { toast('이미지가 없으면 썸네일 문구 2줄이 필요합니다'); return; }
+  const lim = S.settings.pkPerPerson ?? 3; if (Object.values(S.mine.entries || {}).filter(x => x === b.id).length >= lim) { toast('이 배틀 몫을 다 냈습니다'); return; }
+  S.busy = true;
+  try {
+    const used = new Set(S.pkEntries.map(e => e.no));
+    let no; do { no = String.fromCharCode(65 + Math.floor(Math.random() * 6)) + '-' + String(Math.floor(Math.random() * 90) + 10); } while (used.has(no));
+    const ref = S.db.collection('entries').doc();
+    await ref.set({ battleId: b.id, no, t1, t2, title, note, img: S.pkImg || null, status: 'active', createdAt: Date.now() });
+    const mine = Object.assign({}, S.mine); mine.entries = Object.assign({}, mine.entries || {}); mine.entries[ref.id] = b.id; mine.cards = mine.cards || {};
+    await S.db.doc('authors/' + S.uid).set(mine);
+    await S.db.doc('battles/' + b.id).update({ entryCount: (b.entryCount || 0) + 1 });
+    lsDel('pkdraft:' + b.id); S.pkImg = null; toast(`시안 ${no}로 냈습니다`);
+  } catch (e) { toast('내지 못했습니다: ' + (e.code || e.message)); }
+  S.busy = false; render();
+}
+async function pkDeleteEntry(id) {
+  if (S.busy) return; const b = S.battles.find(x => x.id === S.pkOpen); S.busy = true;
+  try {
+    await S.db.doc('entries/' + id).delete();
+    const mine = Object.assign({}, S.mine); mine.entries = Object.assign({}, mine.entries || {}); delete mine.entries[id]; await S.db.doc('authors/' + S.uid).set(mine);
+    if (b) await S.db.doc('battles/' + b.id).update({ entryCount: Math.max(0, (b.entryCount || 1) - 1) });
+    toast('삭제했습니다');
+  } catch (e) { toast('실패: ' + (e.code || e.message)); }
+  S.busy = false;
+}
+async function pkSetState(v) {
+  const b = S.battles.find(x => x.id === S.pkOpen); if (!b) return;
+  try { await S.db.doc('battles/' + b.id).update({ state: v, entryCount: S.pkEntries.length }); toast(pkState[v] + '으로 바꿨습니다'); } catch (e) { toast('실패: ' + (e.code || e.message)); }
+}
+async function pkDeleteBattle() {
+  const b = S.battles.find(x => x.id === S.pkOpen); if (!b || S.pkEntries.length) return;
+  try { await S.db.doc('battles/' + b.id).delete(); closeBattle(); toast('배틀을 삭제했습니다'); } catch (e) { toast('실패: ' + (e.code || e.message)); }
+}
+async function pkSaveRuns(runs) { S.busy = true; try { await S.db.doc('users/' + S.uid + '/private/pkrun').set(runs); S.pkRuns = runs; } catch (e) { toast('저장 실패: ' + (e.code || e.message)); } S.busy = false; render(); }
+async function pkStart() {
+  if (S.busy) return; const b = S.battles.find(x => x.id === S.pkOpen); if (!b) return;
+  const pool = S.pkEntries.filter(e => !isMineEntry(e.id)).map(e => e.id);
+  if (pool.length < 2) { toast('내 시안을 뺀 시안이 2장 이상 있어야 합니다'); return; }
+  const run = { battleId: b.id, round: 1, points: {}, seen: pool.slice(), done: false, startedAt: Date.now() };
+  startRound(run, pool, S.settings.pkDualPass ?? 1);
+  const runs = Object.assign({}, S.pkRuns); runs[b.id] = run; await pkSaveRuns(runs);
+}
+async function pkDecide(choice) {
+  if (S.busy) return; const b = S.battles.find(x => x.id === S.pkOpen); if (!b) return;
+  const run = JSON.parse(JSON.stringify(S.pkRuns[b.id] || null)); if (!run || run.done || !run.pairs[run.idx]) return;
+  const done = applyDecision(run, choice, S.settings.pkDualPass ?? 1);
+  const runs = Object.assign({}, S.pkRuns); runs[b.id] = run; await pkSaveRuns(runs);
+  if (done) {
+    try { const ref = S.db.doc('pkruns/' + S.uid); const s = await ref.get(); const prev = s.exists ? s.data() : {}; const battles = Object.assign({}, prev.battles || {}); battles[b.id] = { points: run.points, seen: run.seen, finishedAt: run.finishedAt }; await ref.set({ battles }); toast('투표 완료!'); } catch (e) { toast('결과 저장 실패: ' + (e.code || e.message)); }
+  }
+}
+async function pkSelect(id, on) {
+  if (S.busy) return; const b = S.battles.find(x => x.id === S.pkOpen); S.busy = true;
+  try {
+    if (on) {
+      let author = null; const q = await S.db.collection('authors').get(); q.docs.forEach(d => { const data = d.data(); if (data.entries && data.entries[id]) author = d.id; });
+      await S.db.doc('entries/' + id).update({ status: 'selected', authorUid: author }); if (b) await S.db.doc('battles/' + b.id).update({ selectedEntry: id });
+      toast(author ? '선정했습니다. 작성자가 공개됩니다' : '선정했습니다. 작성자는 본인이 앱을 열면 표시됩니다');
+    } else { await S.db.doc('entries/' + id).update({ status: 'active', authorUid: null }); if (b && b.selectedEntry === id) await S.db.doc('battles/' + b.id).update({ selectedEntry: null }); }
+  } catch (e) { toast('실패: ' + (e.code || e.message)); }
+  S.busy = false;
+}
+function selfHealEntryAuthor() {
+  S.pkEntries.forEach(e => { if (e.status === 'selected' && !e.authorUid && isMineEntry(e.id) && !e._healing) { e._healing = true; S.db.doc('entries/' + e.id).update({ authorUid: S.uid }).catch(() => {}); } });
+}
+
+/* results */
+function standings(w) {
+  const done = S.runs.map(r => r.weeks && r.weeks[w]).filter(Boolean); const n = done.length;
+  const cards = S.cards.filter(c => c.weekId === w && !c.urgent);
+  const rows = cards.map(c => { let total = 0, exp = 0; done.forEach(r => { if (r.seen && r.seen.includes(c.id)) { exp++; total += (r.points && r.points[c.id]) || 0; } }); return { card: c, total, exp, norm: exp ? total / exp * n : 0 }; });
+  rows.sort((x, y) => y.norm - x.norm || y.total - x.total || (x.card.createdAt || 0) - (y.card.createdAt || 0));
+  return { rows, n };
+}
+function renderResults() {
+  const el = $('#scr-results'); const w = curWeek(); const ph = phase();
+  const weeks = [...new Set(S.cards.map(c => c.weekId))].filter(x => x < w || (x === w && ph === 'results')).sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
+  if (!S.resultsWeek || !weeks.includes(S.resultsWeek)) S.resultsWeek = weeks[0] || null;
+  const doneN = S.runs.filter(r => r.weeks && r.weeks[w]).length;
+  let html = `<div class="stack"><div class="between"><h2>결과</h2>${weeks.length > 1 ? `<select id="rw" data-act="pickWeek">${weeks.map(x => `<option value="${x}" ${x === S.resultsWeek ? 'selected' : ''}>${esc(weekLabel(x))}</option>`).join('')}</select>` : ''}</div>`;
+  if (ph === 'worldcup') html += `<div class="note">${esc(weekLabel(w))} 월드컵 진행 중 · 완료 ${doneN}명. ${S.settings.endHour ?? 18}:00에 전원 합산으로 열립니다.</div>`;
+  if (weeks.length === 0) html += `<div class="empty"><b>아직 결과가 없습니다</b>첫 월드컵이 끝나면 여기에 순위가 나옵니다.</div></div>`;
+  if (!S.resultsWeek) { el.innerHTML = html + '</div>'; return; }
+  const rw = S.resultsWeek; const { rows, n } = standings(rw);
+  const urgent = S.cards.filter(c => c.weekId === rw && c.urgent);
+  html += `<div class="between"><h3>${esc(weekLabel(rw))} 순위 <span class="muted small" style="font-weight:400">${n}명 합산</span></h3>${S.isOwner ? '<span class="pill acc">선정은 계란님만</span>' : ''}</div>`;
+  if (!rows.length) html += `<div class="empty"><b>카드가 없습니다</b></div>`;
+  html += `<div class="card" style="padding:4px 12px">${rows.map((r, i) => {
+    const c = r.card; const sel = c.status === 'selected';
+    return `<div class="rank ${i < 8 ? 'top' : ''}"><div class="n num">${i + 1}</div><button class="tile th" data-act="open" data-id="${esc(c.id)}">${thumbSVG(c.t1, c.t2)}</button><div class="body"><div class="ttl">${esc(c.title)}</div><div class="sc num"><b>${r.norm.toFixed(1)}</b>점 · 원점수 ${r.total} · ${r.exp}/${n}명이 봄${commentCount(c.id) ? ` · 코멘트 ${commentCount(c.id)}` : ''}</div>
+      <div class="row" style="margin-top:6px">${sel ? `<span class="pill on">선정</span><span class="small">작성자 <b data-name="${esc(c.authorUid || '')}">${c.authorUid ? '…' : '(작성자가 앱을 열면 표시)'}</b></span>` : ownerTag('cards', c.id)}${S.isOwner ? (sel ? `<button class="btn sm ghost" data-act="unselect" data-id="${esc(c.id)}">선정 취소</button>` : `<button class="btn sm primary" data-act="select" data-id="${esc(c.id)}">선정</button>`) : ''}</div></div></div>`;
+  }).join('')}</div>`;
+  if (urgent.length) html += `<h3>긴급 카드 <span class="muted small" style="font-weight:400">월드컵 미경유</span></h3><div class="feed">${urgent.map(tileHTML).join('')}</div>`;
+  html += `<p class="small muted">환산 점수 = 카드별 평균 점수 × 참여 인원. 본 사람 수가 다른 카드끼리 공평하게 비교하기 위한 값입니다. 상위 8장이 강조됩니다.</p></div>`;
+  el.innerHTML = html;
+  profilesInto(rows.map(r => r.card.authorUid).concat(S.isOwner && S.authorsIndex ? rows.map(r => S.authorsIndex.cards[r.card.id]) : []));
+}
+async function selectCard(id, on) {
+  if (S.busy) return; S.busy = true;
+  try {
+    if (on) {
+      let author = (S.authorsIndex && S.authorsIndex.cards[id]) || null;
+      if (!author) { const q = await S.db.collection('authors').get(); q.docs.forEach(d => { const data = d.data(); if (data.cards && data.cards[id]) author = d.id; }); }
+      await S.db.doc('cards/' + id).update({ status: 'selected', authorUid: author, selectedAt: Date.now() });
+      toast(author ? '선정했습니다. 작성자가 공개됩니다' : '선정했습니다. 작성자는 본인이 앱을 열면 표시됩니다');
+    } else { await S.db.doc('cards/' + id).update({ status: 'active', authorUid: null }); toast('선정을 취소했습니다'); }
+  } catch (e) { toast('실패: ' + (e.code || e.message)); }
+  S.busy = false;
+}
+
+/* admin */
+async function renderAdmin() {
+  const el = $('#scr-admin'); const s = S.settings; const w = curWeek(); const ph = phase();
+  const runIds = S.runs.map(r => r.id);
+  const doneIds = S.runs.filter(r => r.weeks && r.weeks[w]).map(r => r.id);
+  const forced = s.override && s.overrideRound === w;
+  const upcoming = [w, nextRound(w), nextRound(nextRound(w))].map(weekLabel).join(' · ');
+  el.innerHTML = `<div class="stack">
+    <h2>관리</h2>
+    <div class="card stack"><div class="between"><h3>지금 단계 · ${esc(weekLabel(w))}</h3><span class="pill on">${PHASE[ph]}${forced ? ' (강제)' : ''}</span></div>
+      <p class="small muted">단계는 시간으로 자동 바뀝니다. 월드컵 요일 00:00부터 ${s.endHour ?? 18}:00까지 월드컵, 그 뒤 자정까지 결과 공개, 나머지는 카드 모집입니다. 다음 월드컵: ${esc(upcoming)}</p>
+      <details class="more"><summary>이번 회차만 단계 강제 (마감 연장 등)</summary><div class="row" style="margin-top:8px">${['upload', 'worldcup', 'results'].map(x => `<button class="btn sm ${forced && s.override === x ? 'primary' : ''}" data-act="override" data-v="${x}">${PHASE[x]}</button>`).join('')}<button class="btn sm ghost" data-act="override" data-v="">자동으로</button></div><p class="small muted" style="margin-top:6px">강제한 단계는 다음 회차가 되면 자동으로 풀립니다.</p></details></div>
+    <div class="card stack"><h3>이번 회차 참여 <span class="muted small" style="font-weight:400">월드컵 완료 ${doneIds.length}명</span></h3>
+      ${runIds.length ? `<table class="plain">${runIds.map(id => `<tr><td data-name="${esc(id)}">…</td><td>${doneIds.includes(id) ? '<span class="pill good">완료</span>' : '<span class="pill">미완료</span>'}</td></tr>`).join('')}</table>` : '<p class="small muted">아직 월드컵을 한 사람이 없습니다.</p>'}
+      <div id="adminAuthors"></div></div>
+    <div class="card stack"><h3>멤버 관리 <span class="muted small" style="font-weight:400">구글 계정 이메일로 초대</span></h3>
+      <table class="plain">${S.members.map(m => { const own = m.email === ownerOf(s); const can = !own && (S.isOwner || (isOps() && m.role !== 'ops')); return `<tr><td>${esc(m.name || '')}<div class="small muted">${esc(m.email)}</div></td><td>${own ? '<span class="pill on">계란님</span>' : `<span class="pill ${m.role === 'ops' ? 'acc' : ''}">${m.role === 'ops' ? '운영자' : '멤버'}</span> ${can ? `<button class="btn sm ghost" data-act="memberRole" data-id="${esc(m.email)}" data-v="${m.role === 'ops' ? 'member' : 'ops'}">${m.role === 'ops' ? '멤버로' : '운영자로'}</button><button class="btn sm ghost" data-act="memberRemove" data-id="${esc(m.email)}">✕</button>` : ''}`}</td></tr>`; }).join('')}</table>
+      <div class="row"><input id="m_email" placeholder="구글 계정 이메일" style="flex:1;min-width:0;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:9px 11px"><select id="m_role" style="background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:9px"><option value="member">멤버</option><option value="ops">운영자</option></select><button class="btn sm primary" data-act="memberAdd">추가</button></div>
+      <p class="small muted">추가한 이메일로 구글 로그인하면 바로 들어옵니다. 운영자는 설정·단계 강제·배틀 관리를 할 수 있고, 작성자 이름은 계란님에게만 보입니다.</p>
+      ${S.isOwner ? `<details class="more"><summary>계란님 계정 바꾸기</summary><div class="row" style="margin-top:8px"><input id="o_email" value="${esc(ownerOf(s))}" style="flex:1;min-width:0;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:9px 11px"><button class="btn sm" data-act="ownerSave">바꾸기</button></div><p class="small muted" style="margin-top:6px">바꾸면 그 계정만 작성자를 볼 수 있고, 지금 계정은 멤버가 됩니다. 새 계정은 멤버에 먼저 추가해 두세요.</p></details>` : ''}</div>
+    <div class="card stack"><h3>설정</h3>
+      <div class="field"><label>월드컵 요일</label><div class="row" id="wcDaysBox">${[0, 1, 2, 3, 4, 5, 6].map(d => `<label class="check" style="gap:4px"><input type="checkbox" data-wcday="${d}" ${wcDays().includes(d) ? 'checked' : ''}> ${DAYS[d]}</label>`).join('')}</div></div>
+      <div class="two"><div class="field"><label for="s_endHour">월드컵 마감 시각 (시)</label><input id="s_endHour" type="number" min="1" max="23" value="${s.endHour ?? 18}"></div><div class="field"><label for="s_target">회차 목표 카드 수</label><input id="s_target" type="number" min="4" max="64" value="${s.target ?? 16}"></div></div>
+      <div class="two"><div class="field"><label for="s_perPerson">1인 카드 상한</label><input id="s_perPerson" type="number" min="1" max="20" value="${s.perPerson ?? 3}"></div><div class="field"><label for="s_ownerCards">계란님 카드 수</label><input id="s_ownerCards" type="number" min="0" max="20" value="${s.ownerCards ?? 2}"></div></div>
+      <div class="two"><div class="field"><label for="s_dualPass">둘 다 통과 (라운드당)</label><input id="s_dualPass" type="number" min="0" max="10" value="${s.dualPass ?? 2}"></div><div class="field"><label for="s_detailFrom">상세 공개 라운드</label><input id="s_detailFrom" type="number" min="1" max="6" value="${s.detailFrom ?? 2}"></div></div>
+      <div class="two"><div class="field"><label for="s_pkPerPerson">썸네일 배틀 1인 시안 수</label><input id="s_pkPerPerson" type="number" min="1" max="10" value="${s.pkPerPerson ?? 3}"></div><div class="field"><label for="s_pkDualPass">배틀 둘 다 통과</label><input id="s_pkDualPass" type="number" min="0" max="5" value="${s.pkDualPass ?? 1}"></div></div>
+      <div class="field"><label for="s_schedule">일정 안내 문구</label><input id="s_schedule" value="${esc(s.schedule || '')}"></div>
+      <div class="row"><button class="btn" data-act="saveSettings">설정 저장</button><span class="small muted">요일을 바꾸면 회차 날짜가 바로 다시 계산됩니다</span></div></div>
+    <p class="small muted">시간은 보는 사람 기기 기준(한국)입니다. 카드·시안·코멘트 작성자는 계란님 계정에만 🔒 표시로 보이고(운영자 포함 다른 누구도 못 봄, Firestore 규칙으로 차단), 월드컵 대진 화면에서는 계란님에게도 보이지 않습니다. 진행 중인 월드컵 표는 본인만 볼 수 있으며 완료 시에만 합산에 들어갑니다.</p>
+  </div>`;
+  profilesInto();
+  if (S.isOwner) {
+    try {
+      const q = await S.db.collection('authors').get(); const rows = q.docs.map(d => { const data = d.data(); const n = Object.values(data.cards || {}).filter(x => x === w).length; return { id: d.id, n }; });
+      const box = $('#adminAuthors'); if (box) { box.innerHTML = `<h3 style="margin-top:6px">${esc(weekLabel(w))} 카드 올린 사람 <span class="muted small" style="font-weight:400">계란님만 보임</span></h3>` + (rows.length ? `<table class="plain">${rows.map(r => `<tr><td data-name="${esc(r.id)}">…</td><td class="num">${r.n}장</td></tr>`).join('')}</table>` : '<p class="small muted">아직 없습니다.</p>'); profilesInto(rows.map(r => r.id)); }
+    } catch (e) {}
+  }
+}
+async function setOverride(v) {
+  if (S.busy) return; S.busy = true;
+  try { await S.db.doc('settings/main').update(v ? { override: v, overrideRound: curWeek() } : { override: null, overrideRound: null }); toast(v ? `이번 회차를 '${PHASE[v]}'로 강제했습니다` : '자동 단계로 돌아갑니다'); } catch (e) { toast('실패: ' + (e.code || e.message)); }
+  S.busy = false;
+}
+async function saveSettings() {
+  const g = id => $('#' + id).value; const n = (id, d) => { const v = parseInt(g(id), 10); return isNaN(v) ? d : v; };
+  const days = [...document.querySelectorAll('[data-wcday]')].filter(i => i.checked).map(i => parseInt(i.dataset.wcday, 10));
+  if (!days.length) { toast('월드컵 요일을 하나 이상 고르세요'); return; }
+  try { await S.db.doc('settings/main').update({ wcDays: days, endHour: Math.min(23, Math.max(1, n('s_endHour', 18))), target: n('s_target', 16), schedule: g('s_schedule').trim(), perPerson: n('s_perPerson', 3), ownerCards: n('s_ownerCards', 2), dualPass: n('s_dualPass', 2), detailFrom: n('s_detailFrom', 2), pkPerPerson: n('s_pkPerPerson', 3), pkDualPass: n('s_pkDualPass', 1) }); toast('저장했습니다'); } catch (e) { toast('실패: ' + (e.code || e.message)); }
+}
+async function ownerSave() {
+  const em = ($('#o_email').value || '').trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { toast('이메일 형식을 확인하세요'); return; }
+  if (em === ownerOf(S.settings)) { toast('지금과 같은 계정입니다'); return; }
+  if (!S.members.some(m => m.email === em)) { toast('먼저 그 이메일을 멤버에 추가하세요'); return; }
+  try {
+    await S.db.doc('members/' + em).update({ role: 'owner' }).catch(() => {});
+    await S.db.doc('members/' + S.email).update({ role: 'ops' }).catch(() => {});
+    await S.db.doc('settings/main').update({ ownerEmail: em }); // 이게 바뀌면 화면이 새로 고쳐진다
+    toast('계란님 계정을 바꿨습니다');
+  } catch (e) { toast('실패: ' + (e.code || e.message)); }
+}
+
+/* events */
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-act],[data-tab]'); if (!t) return;
+  if (t.dataset.tab) { setTab(t.dataset.tab); return; }
+  const act = t.dataset.act, id = t.dataset.id, v = t.dataset.v;
+  switch (act) {
+    case 'open': openDetail(id); break;
+    case 'close': closeDetail(); break;
+    case 'goBoard': setTab('board'); break;
+    case 'setType': { const i = S.compose.types.indexOf(v); if (i >= 0) { if (S.compose.types.length > 1) S.compose.types.splice(i, 1); } else S.compose.types.push(v); saveDraft(); renderCompose(); break; }
+    case 'setKind': S.compose.kind = v; saveDraft(); renderCompose(); break;
+    case 'submitCard': submitCard(); break;
+    case 'clearDraft': lsDel('draft'); S.compose.revisedFrom = null; S.compose.types = [TYPES[0]]; clearComposeForm(); renderCompose(); break;
+    case 'dropRevised': S.compose.revisedFrom = null; saveDraft(); renderCompose(); break;
+    case 'revise': { const c = cardById(id); if (c) { closeDetail(); setTab('compose'); fillComposeFrom(c); renderCompose(); toast('내용을 불러왔습니다. 고쳐서 올리세요'); } break; }
+    case 'deleteCard': { const c = cardById(id); if (!c) break; if (t.dataset.sure) deleteCard(id); else { t.dataset.sure = '1'; t.textContent = '정말 삭제 (한 번 더)'; } break; }
+    case 'cmType': { const box = t.closest('[data-composer]'); box.querySelectorAll('[data-act="cmType"]').forEach(b => b.classList.toggle('on', b === t)); box.querySelector('[data-part="develop"]').hidden = v !== 'develop'; box.querySelector('[data-part="tackle"]').hidden = v !== 'tackle'; break; }
+    case 'sendComment': sendComment(t); break;
+    case 'like': toggleLike(id); break;
+    case 'adopt': toggleAdopt(id); break;
+    case 'startRun': startRun(); break;
+    case 'restartRun': startRun(); break;
+    case 'decide': decide(v); break;
+    case 'wcComment': S.wcCommentOpen[t.dataset.key] = !S.wcCommentOpen[t.dataset.key]; render(); break;
+    case 'select': selectCard(id, true); break;
+    case 'unselect': selectCard(id, false); break;
+    case 'override': setOverride(v || null); break;
+    case 'login': login(); break;
+    case 'logout': S.auth.signOut().then(() => location.reload()); break;
+    case 'memberAdd': { const em = ($('#m_email').value || '').trim().toLowerCase(); const role = $('#m_role').value; if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { toast('이메일 형식을 확인하세요'); break; } S.db.doc('members/' + em).set({ role, name: '', addedAt: Date.now(), addedBy: S.email }).then(() => { toast('추가했습니다. 그 계정으로 로그인하면 바로 들어옵니다'); $('#m_email').value = ''; }).catch(e => toast('실패: ' + (e.code || e.message))); break; }
+    case 'memberRole': S.db.doc('members/' + id).update({ role: v }).then(() => toast('바꿨습니다')).catch(e => toast('실패: ' + (e.code || e.message))); break;
+    case 'memberRemove': { if (t.dataset.sure) S.db.doc('members/' + id).delete().then(() => toast('뺐습니다')).catch(e => toast('실패: ' + (e.code || e.message))); else { t.dataset.sure = '1'; t.textContent = '정말 빼기'; } break; }
+    case 'openBattle': openBattle(id); break;
+    case 'closeBattle': closeBattle(); break;
+    case 'pkNew': S.pkNew = true; render(); window.scrollTo({ top: 0 }); break;
+    case 'pkCancelNew': S.pkNew = false; render(); break;
+    case 'pkCreate': pkCreate(); break;
+    case 'pkImgClear': S.pkImg = null; render(); break;
+    case 'pkSubmit': pkSubmit(); break;
+    case 'pkDelete': { if (t.dataset.sure) pkDeleteEntry(id); else { t.dataset.sure = '1'; t.textContent = '정말 삭제 (한 번 더)'; } break; }
+    case 'pkState': pkSetState(v); break;
+    case 'pkDeleteBattle': pkDeleteBattle(); break;
+    case 'pkStart': pkStart(); break;
+    case 'pkDecide': pkDecide(v); break;
+    case 'pkSelect': pkSelect(id, v === '1'); break;
+    case 'none': break;
+    case 'saveSettings': saveSettings(); break;
+    case 'claimOwner': claimOwner(); break;
+    case 'ownerSave': ownerSave(); break;
+  }
+});
+document.addEventListener('change', e => { if (e.target.id === 'rw') { S.resultsWeek = e.target.value; render(); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.openCard) closeDetail(); });
+
+init();
+})();
+</script>
+</body>
+</html>

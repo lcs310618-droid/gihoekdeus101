@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 이 파일은 고칠 것 없이 그대로 Firebase 콘솔 → Firestore → 규칙 탭에 붙여넣고 게시하면 됩니다.
+    // 계란님 계정은 사이트에 처음 로그인할 때 앱 안에서 정해지고 settings/main.ownerEmail에 저장됩니다.
+
+    function signedIn() { return request.auth != null && request.auth.token.email != null; }
+    function email() { return request.auth.token.email.lower(); }
+    function settingsPath() { return /databases/$(database)/documents/settings/main; }
+    function ownerEmail() { return exists(settingsPath()) ? get(settingsPath()).data.ownerEmail.lower() : ''; }
+    function isOwner() { return signedIn() && email() == ownerEmail(); }
+    function memberPath() { return /databases/$(database)/documents/members/$(email()); }
+    function isMember() { return signedIn() && (isOwner() || exists(memberPath())); }
+    function isOps() { return isOwner() || (isMember() && get(memberPath()).data.role == 'ops'); }
+    function isSelf(uid) { return isMember() && request.auth.uid == uid; }
+
+    // 설정. 처음 한 번은 로그인한 사람이 자기 이메일을 ownerEmail로 넣어 만들 수 있다(첫 설정 화면).
+    // 그 뒤로는 운영자가 숫자를 바꾸고, ownerEmail은 계란님만 바꾼다.
+    match /settings/main {
+      allow get: if signedIn();
+      allow create: if signedIn() && request.resource.data.ownerEmail == email();
+      allow update: if isOwner() || (isOps() && request.resource.data.ownerEmail == resource.data.ownerEmail);
+    }
+
+    // 멤버 명단 (문서 ID = 이메일). 운영자가 추가·삭제, 계란님 문서는 본인이 만든다
+    match /members/{em} {
+      allow read: if isMember();
+      allow create: if isOps() || (isOwner() && em == email());
+      allow update: if isOps() || (isMember() && em == email() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']));
+      allow delete: if isOps() && em != ownerEmail();
+    }
+
+    // 이름 표시용 (uid → 이름). 본인만 쓰고 멤버 모두 읽음
+    match /profiles/{uid} {
+      allow read: if isMember();
+      allow write: if isSelf(uid);
+    }
+
+    // 공개 데이터 (작성자 정보 없음)
+    match /cards/{doc}    { allow read, write: if isMember(); }
+    match /comments/{doc} { allow read, write: if isMember(); }
+    match /battles/{doc}  { allow read, write: if isMember(); }
+    match /entries/{doc}  { allow read, write: if isMember(); }
+
+    // 작성자 매핑: 본인과 계란님만 읽을 수 있음. 운영자도 못 읽음
+    match /authors/{uid} {
+      allow read: if isOwner() || isSelf(uid);
+      allow write: if isSelf(uid);
+    }
+
+    // 완료된 월드컵 결과 (합산용). 본인만 씀
+    match /runs/{uid}   { allow read: if isMember(); allow write: if isSelf(uid); }
+    match /pkruns/{uid} { allow read: if isMember(); allow write: if isSelf(uid); }
+
+    // 개인 영역: 진행 중인 월드컵, 내 코멘트·공감 목록
+    match /users/{uid}/{rest=**} {
+      allow read, write: if isSelf(uid);
+    }
+  }
+}
