@@ -8,6 +8,7 @@
 - owner/ops가 관리 탭 `publishResults()`로 마감 회차/종료 배틀을 집계하고 `results/w_날짜`, `results/b_배틀ID`에 개인정보 없는 `{n,scores}`를 공개한다. 일반 멤버의 standings는 공개 집계만 사용한다.
 - 운영자는 전체 투표 원본을 읽는 신뢰된 계정이다. `authors` 전체는 owner만 읽는다. 원본 `seen`을 통한 운영자의 작성자 추정 가능성은 수용한 내부용 설계다.
 - `participation`은 UID·대상·완료 종류만 공개하며 점수/seen이 없다.
+- **Firestore는 배열 안의 배열을 저장하지 못한다 (`invalid-argument`).** 대진은 메모리에서만 `[[a,b],[c,d],[e]]` 배열이고, 저장 경계에서 `packRun()/packAudit()`로 `pairs:["a|b","c|d"]`, `audit.rounds:["a|b,c|d,e", ...]`(라운드 하나 = 문자열 하나, 부전승은 id 하나) 형태로 바꾼다. 읽을 때는 `unpackRun()/unpackRuns()`로 되돌리고, `verifiedVote()`는 `unpackRound()`로 풀어서 재생한다. `users/{uid}/private/run`, `users/{uid}/private/pkrun`, `runs/{uid}.weeks[*].audit`, `pkruns/{uid}.battles[*].audit` 모두 이 규칙을 따른다. 화면·엔진 코드에 중첩 배열을 그대로 `set()`하는 코드를 다시 넣지 말 것. ID는 Firestore 자동 ID라 `|`와 `,`가 안전하다. firestore.rules는 `rounds is list`만 검사하므로 수정 불필요.
 - 새 투표에는 `audit:{v:1,dual,rounds,choices}`를 저장한다. `verifiedVote()`가 대진을 재생해 점수를 계산한다. 정상 누적 점수는 5를 초과할 수 있다. 기존 audit 없는 완료 기록은 삭제하지 않고 호환 검사 후 유지한다. 새 저장은 audit 필수이고 완료 회차별로 덮어쓸 수 없다.
 - `registerAuthor(batch,kind,id,value)`로 본문 생성과 작성자 연결 추가를 원자적으로 처리한다. `authors`에는 `_change:{kind,id}`가 추가된다. 기존 maps는 변경/삭제 불가, 새 본문을 같은 batch에서 만드는 경우만 한 항목 추가 가능. 기존 8개 카드는 이전·재작성하지 않는다.
 - 카드 삭제 후 작성자 연결을 남기므로 countMine은 실제 살아있는 카드 기준이다. 첫 투표 시작 때 `roundLocks`를 만들고 카드 삭제를 막는다.
