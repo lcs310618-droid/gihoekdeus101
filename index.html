@@ -273,7 +273,8 @@ const isMine = id => !!(S.mine.cards && S.mine.cards[id]);
 const cardById = id => S.cards.find(c => c.id === id);
 const commentCount = id => S.cards._cc ? (S.cards._cc[id] || 0) : null;
 const targetWeek = () => phase() === 'upload' ? curWeek() : nextRound(curWeek());
-const myLimit = () => S.isOwner ? (S.settings?.ownerCards ?? 2) : (S.settings?.perPerson ?? 5);
+// 1인 '권장' 장수. 상한이 아니다 — 원하는 만큼 더 낼 수 있다 (2026-10-19 패치).
+const myRec = () => S.isOwner ? (S.settings?.ownerCards ?? 2) : (S.settings?.perPerson ?? 3);
 const countMine = w => Object.values(S.mine.cards || {}).filter(x => x === w).length;
 const poolFor = w => S.cards.filter(c => c.weekId === w && !c.urgent && c.status !== 'archived');
 const myRunDone = w => !!(S.run && S.run.weekId === w && S.run.done);
@@ -449,7 +450,7 @@ function renderBoard() {
   const cap = S.settings.target || 16;
   const mineN = countMine(w);
   let html = `<div class="stack">
-    <div class="between"><h2>${esc(weekLabel(w))} 월드컵 카드 <span class="muted num" style="font-weight:400">${pool.length}/${cap}</span></h2><span class="pill ${mineN >= myLimit() ? 'good' : ''}">내 카드 ${mineN}/${myLimit()}</span></div>
+    <div class="between"><h2>${esc(weekLabel(w))} 월드컵 카드 <span class="muted num" style="font-weight:400">${pool.length}장 · 목표 ${cap}</span></h2><span class="pill ${mineN >= myRec() ? 'good' : ''}">내 카드 ${mineN}장${mineN < myRec() ? ` · 권장 ${myRec()}` : ''}</span></div>
     <p class="small muted">${esc(S.settings.schedule || '')}</p>`;
   if (S.canWrite === false) html += `<div class="note">보기 전용 권한입니다. 카드를 올리거나 월드컵을 하려면 계란님에게 '편집자' 권한으로 다시 초대해 달라고 하세요.</div>`;
   if (urgent.length) html += `<h3 style="margin-top:4px">긴급 카드 <span class="muted small" style="font-weight:400">월드컵 없이 바로 회의 안건</span></h3><div class="feed">${urgent.map(tileHTML).join('')}</div>`;
@@ -484,8 +485,7 @@ function fieldHTML([k, label, kind, req, ph], val) {
 }
 function renderCompose() {
   const el = $('#scr-compose');
-  const w = targetWeek(), mineN = countMine(w), lim = myLimit();
-  const full = mineN >= lim;
+  const w = targetWeek(), mineN = countMine(w), rec = myRec();
   if (!el.dataset.built) {
     const d = lsGet('draft') || {};
     S.compose.types = Array.isArray(d.types) && d.types.length ? d.types : [TYPES[0]]; S.compose.kind = d.kind || KINDS[0]; S.compose.revisedFrom = d.revisedFrom || null;
@@ -509,13 +509,13 @@ function renderCompose() {
     el.dataset.built = '1';
     el.addEventListener('input', onComposeInput);
   }
-  $('#cTarget').textContent = `${weekLabel(w)} 월드컵 · 내 카드 ${mineN}/${lim}`;
+  $('#cTarget').textContent = `${weekLabel(w)} 월드컵 · 내 카드 ${mineN}장`;
   const note = $('#cNote');
   if (S.canWrite === false) note.innerHTML = `<div class="note">보기 전용 권한이라 올릴 수 없습니다.</div>`;
-  else if (full) note.innerHTML = `<div class="note">${esc(weekLabel(w))} 몫 ${lim}장을 다 채웠습니다. 지난 카드를 고쳐 올리는 것도 이 몫에 포함됩니다.</div>`;
+  else if (mineN >= rec) note.innerHTML = `<div class="note acc">권장 ${rec}장을 채웠습니다. 상한은 없으니 더 내고 싶으면 더 올리세요 — 카드가 많을수록 월드컵이 풍성해집니다.</div>`;
   else if (phase() !== 'upload') note.innerHTML = `<div class="note">오늘 월드컵이 진행 중이라 지금 올리는 카드는 ${esc(weekLabel(w))} 풀에 들어갑니다.</div>`;
   else note.innerHTML = '';
-  $('#btnSubmit').disabled = full || S.canWrite === false;
+  $('#btnSubmit').disabled = S.canWrite === false;
   document.querySelectorAll('#segType button').forEach(b => b.classList.toggle('primary', S.compose.types.includes(b.dataset.v)));
   document.querySelectorAll('#segKind button').forEach(b => b.classList.toggle('on', b.dataset.v === S.compose.kind));
   $('#cRevised').innerHTML = S.compose.revisedFrom ? `<div class="note acc">지난 카드의 수정본으로 올립니다. <button class="btn sm ghost" data-act="dropRevised">연결 끊기</button></div>` : '';
@@ -560,8 +560,7 @@ async function submitCard() {
   if (missing.length) { toast('필수 칸이 비었습니다: ' + missing.slice(0, 3).join(', ') + (missing.length > 3 ? ' 외' : '')); return; }
   if (!hasDigit(o.data) && !/http/.test(o.data)) { toast('데이터 근거에 숫자나 링크를 하나는 넣어주세요'); return; }
   if (!o.types.length) { toast('유형을 하나 이상 고르세요'); return; }
-  const w = targetWeek();
-  if (countMine(w) >= myLimit()) { toast('이번 회차 몫을 다 채웠습니다'); return; }
+  const w = targetWeek(); // 1인 상한 없음 — 권장 장수만 안내 (2026-10-19)
   S.busy = true; $('#btnSubmit').disabled = true;
   try {
     const used = new Set(S.cards.filter(c => c.weekId === w).map(c => c.no));
@@ -1061,7 +1060,7 @@ async function renderAdmin() {
     <div class="card stack"><h3>설정</h3>
       <div class="field"><label>월드컵 요일</label><div class="row" id="wcDaysBox">${[0, 1, 2, 3, 4, 5, 6].map(d => `<label class="check" style="gap:4px"><input type="checkbox" data-wcday="${d}" ${wcDays().includes(d) ? 'checked' : ''}> ${DAYS[d]}</label>`).join('')}</div></div>
       <div class="two"><div class="field"><label for="s_endHour">월드컵 마감 시각 (시)</label><input id="s_endHour" type="number" min="1" max="23" value="${s.endHour ?? 18}"></div><div class="field"><label for="s_target">회차 목표 카드 수</label><input id="s_target" type="number" min="4" max="64" value="${s.target ?? 16}"></div></div>
-      <div class="two"><div class="field"><label for="s_perPerson">1인 카드 상한</label><input id="s_perPerson" type="number" min="1" max="20" value="${s.perPerson ?? 3}"></div><div class="field"><label for="s_ownerCards">계란님 카드 수</label><input id="s_ownerCards" type="number" min="0" max="20" value="${s.ownerCards ?? 2}"></div></div>
+      <div class="two"><div class="field"><label for="s_perPerson">1인 권장 카드 수 <span class="muted small">(상한 아님)</span></label><input id="s_perPerson" type="number" min="1" max="20" value="${s.perPerson ?? 3}"></div><div class="field"><label for="s_ownerCards">계란님 권장 카드 수</label><input id="s_ownerCards" type="number" min="0" max="20" value="${s.ownerCards ?? 2}"></div></div>
       <div class="two"><div class="field"><label for="s_dualPass">둘 다 통과 (라운드당)</label><input id="s_dualPass" type="number" min="0" max="10" value="${s.dualPass ?? 2}"></div><div class="field"><label for="s_detailFrom">상세 공개 라운드</label><input id="s_detailFrom" type="number" min="1" max="6" value="${s.detailFrom ?? 2}"></div></div>
       <div class="two"><div class="field"><label for="s_pkPerPerson">썸네일 배틀 1인 시안 수</label><input id="s_pkPerPerson" type="number" min="1" max="10" value="${s.pkPerPerson ?? 3}"></div><div class="field"><label for="s_pkDualPass">배틀 둘 다 통과</label><input id="s_pkDualPass" type="number" min="0" max="5" value="${s.pkDualPass ?? 1}"></div></div>
       <div class="field"><label for="s_schedule">일정 안내 문구</label><input id="s_schedule" value="${esc(s.schedule || '')}"></div>

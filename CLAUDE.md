@@ -15,6 +15,7 @@
 - 월드컵 엔진: `startRound(run, ids, dual)`, `applyDecision(run, choice, dual)`. 라운드마다 남은 카드끼리 랜덤 재대진, 부전승은 자동 통과, n번째 통과에 `min(n,5)`점. `둘 다 통과`는 라운드당 `min(dual, pairs-1)`회, 남은 카드 4장 이하면 0회 (수렴 보장). 소재 월드컵과 배틀이 같은 함수를 쓴다.
 - 진행 중인 판은 `users/{uid}/private/run`(배틀은 `pkrun`)에만 있고, 완료 시 `runs/{uid}.weeks[weekId]`(배틀은 `pkruns/{uid}.battles[id]`)에 `{points, seen}`으로 공개된다. 순위는 각 클라이언트가 `standings()`로 합산(본 사람 수가 다르면 환산).
 - 코멘트 열람: 이번 회차 내 월드컵을 끝냈거나, 결과 공개 단계거나, 지난 회차거나, 내 카드일 때만 남의 코멘트가 보인다 (`canSeeComments`).
+- 카드 수: 1인 '상한'은 없다 (2026-10-19 패치). `perPerson`/`ownerCards` 설정은 권장 장수 표시용이고 `myRec()`로 읽는다. 제출을 막는 로직을 다시 넣지 말 것. 월드컵 N강은 그 회차 카드 수로 자동 결정되며 엔진은 48장까지 수렴 확인됨.
 - 권한: `S.role` ∈ owner/ops/member. `S.isOwner`는 `settings/main.ownerEmail`과 로그인 이메일 비교(`ownerOf()`). `isOps()`가 관리 탭·배틀 관리 게이트. 멤버 명단은 `members/{email}`. ownerEmail이 바뀌면 settings 스냅샷에서 `location.reload()`로 권한을 다시 계산한다.
 
 ## 자주 하는 수정
