@@ -1,61 +1,174 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // 이 파일은 고칠 것 없이 그대로 Firebase 콘솔 → Firestore → 규칙 탭에 붙여넣고 게시하면 됩니다.
-    // 계란님 계정은 사이트에 처음 로그인할 때 앱 안에서 정해지고 settings/main.ownerEmail에 저장됩니다.
-
     function signedIn() { return request.auth != null && request.auth.token.email != null; }
     function email() { return request.auth.token.email.lower(); }
-    function settingsPath() { return /databases/$(database)/documents/settings/main; }
-    function ownerEmail() { return exists(settingsPath()) ? get(settingsPath()).data.ownerEmail.lower() : ''; }
-    function isOwner() { return signedIn() && email() == ownerEmail(); }
+    function cfg() { return get(/databases/$(database)/documents/settings/main).data; }
+    function isOwner() { return signedIn() && email() == cfg().ownerEmail.lower(); }
     function memberPath() { return /databases/$(database)/documents/members/$(email()); }
     function isMember() { return signedIn() && (isOwner() || exists(memberPath())); }
     function isOps() { return isOwner() || (isMember() && get(memberPath()).data.role == 'ops'); }
     function isSelf(uid) { return isMember() && request.auth.uid == uid; }
-
-    // 설정. 처음 한 번은 로그인한 사람이 자기 이메일을 ownerEmail로 넣어 만들 수 있다(첫 설정 화면).
-    // 그 뒤로는 운영자가 숫자를 바꾸고, ownerEmail은 계란님만 바꾼다.
+    function authorPath() { return /databases/$(database)/documents/authors/$(request.auth.uid); }
+    function owns(kind,id) { return isMember() && exists(authorPath()) && id in get(authorPath()).data.get(kind,{}); }
+    function newBinding(kind,id) {
+      return isMember() && existsAfter(authorPath()) && id in getAfter(authorPath()).data.get(kind,{});
+    }
+    function selectedUpdate() {
+      return isOwner() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','authorUid','selectedAt']);
+    }
+    function ownCardDelete(id) {
+      return owns('cards',id) && resource.data.status != 'selected'
+        && !exists(/databases/$(database)/documents/roundLocks/$(resource.data.weekId));
+    }
     match /settings/main {
       allow get: if signedIn();
-      allow create: if signedIn() && request.resource.data.ownerEmail == email();
+      // Existing settings stay valid. Future bootstrap must be done by a Firebase admin.
+      allow create: if false;
       allow update: if isOwner() || (isOps() && request.resource.data.ownerEmail == resource.data.ownerEmail);
     }
-
-    // 멤버 명단 (문서 ID = 이메일). 운영자가 추가·삭제, 계란님 문서는 본인이 만든다
     match /members/{em} {
       allow read: if isMember();
-      allow create: if isOps() || (isOwner() && em == email());
-      allow update: if isOps() || (isMember() && em == email() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']));
-      allow delete: if isOps() && em != ownerEmail();
+      allow create: if isOps() && request.resource.data.role in ['member','ops'];
+      allow update: if isOwner() || (isOps() && em != cfg().ownerEmail.lower()
+        && resource.data.role != 'ops' && request.resource.data.role in ['member','ops'])
+        || (isMember() && em == email() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']));
+      allow delete: if isOps() && em != cfg().ownerEmail.lower() && (isOwner() || resource.data.role != 'ops');
     }
-
-    // 이름 표시용 (uid → 이름). 본인만 쓰고 멤버 모두 읽음
     match /profiles/{uid} {
       allow read: if isMember();
-      allow write: if isSelf(uid);
+      allow create, update: if isSelf(uid) && request.resource.data.email == email()
+        && request.resource.data.keys().hasOnly(['name','email','photo','updatedAt']);
     }
-
-    // 공개 데이터 (작성자 정보 없음)
-    match /cards/{doc}    { allow read, write: if isMember(); }
-    match /comments/{doc} { allow read, write: if isMember(); }
-    match /battles/{doc}  { allow read, write: if isMember(); }
-    match /entries/{doc}  { allow read, write: if isMember(); }
-
-    // 작성자 매핑: 본인과 계란님만 읽을 수 있음. 운영자도 못 읽음
+    // Append exactly one author binding, and only for a document created in the same batch.
+    // Existing bindings cannot be removed, overwritten or reassigned.
+    function authorChange() {
+      let d = request.resource.data;
+      let kind = d._change.kind;
+      let id = d._change.id;
+      let old = resource == null ? {} : resource.data;
+      let before = old.get(kind,{});
+      let after = d.get(kind,{});
+      return kind in ['cards','entries','comments'] && id is string
+        && d.diff(old).affectedKeys().hasOnly([kind,'_change'])
+        && !(id in before) && after.diff(before).affectedKeys().hasOnly([id]) && id in after
+        && !exists(/databases/$(database)/documents/$(kind)/$(id))
+        && existsAfter(/databases/$(database)/documents/$(kind)/$(id));
+    }
     match /authors/{uid} {
       allow read: if isOwner() || isSelf(uid);
-      allow write: if isSelf(uid);
+      allow create, update: if isSelf(uid) && authorChange();
     }
-
-    // 완료된 월드컵 결과 (합산용). 본인만 씀
-    match /runs/{uid}   { allow read: if isMember(); allow write: if isSelf(uid); }
-    match /pkruns/{uid} { allow read: if isMember(); allow write: if isSelf(uid); }
-
-    // 개인 영역: 진행 중인 월드컵, 내 코멘트·공감 목록
-    match /users/{uid}/{rest=**} {
-      allow read, write: if isSelf(uid);
+    match /cards/{id} {
+      allow read: if isMember();
+      allow create: if newBinding('cards',id) && request.resource.data.status == 'active'
+        && !('authorUid' in request.resource.data)
+        && getAfter(authorPath()).data.cards[id] == request.resource.data.weekId;
+      allow update: if selectedUpdate();
+      allow delete: if ownCardDelete(id);
     }
+    match /battles/{id} {
+      allow read: if isMember();
+      allow create: if isMember() && request.resource.data.creatorUid == request.auth.uid
+        && request.resource.data.state == 'open' && request.resource.data.selectedEntry == null;
+      allow update: if isMember() && (isOps() || resource.data.creatorUid == request.auth.uid)
+        && request.resource.data.creatorUid == resource.data.creatorUid
+        && (isOwner() || request.resource.data.selectedEntry == resource.data.selectedEntry)
+        && request.resource.data.state in ['open','vote','closed'];
+      allow delete: if isMember() && (isOps() || resource.data.creatorUid == request.auth.uid) && resource.data.state == 'open';
+    }
+    match /entries/{id} {
+      // Lightweight internal version keeps pre-vote assets readable; UI hides others until vote.
+      allow read: if isMember();
+      allow create: if newBinding('entries',id) && request.resource.data.status == 'active'
+        && !('authorUid' in request.resource.data)
+        && getAfter(authorPath()).data.entries[id] == request.resource.data.battleId
+        && get(/databases/$(database)/documents/battles/$(request.resource.data.battleId)).data.state == 'open';
+      allow update: if selectedUpdate();
+      allow delete: if owns('entries',id) && resource.data.status != 'selected'
+        && get(/databases/$(database)/documents/battles/$(resource.data.battleId)).data.state == 'open';
+    }
+    function canReadCardComments(cardId, week) {
+      let resultId = 'w_' + week;
+      return isMember() && (isOps() || owns('cards',cardId)
+        || exists(/databases/$(database)/documents/results/$(resultId))
+        || (exists(/databases/$(database)/documents/runs/$(request.auth.uid))
+          && week in get(/databases/$(database)/documents/runs/$(request.auth.uid)).data.weeks));
+    }
+    match /comments/{id} {
+      allow get: if owns('comments',id) || canReadCardComments(resource.data.cardId,resource.data.weekId);
+      allow list: if canReadCardComments(resource.data.cardId,resource.data.weekId);
+      allow create: if newBinding('comments',id) && request.resource.data.likes == 0 && request.resource.data.adopted == false
+        && getAfter(authorPath()).data.comments[id] == request.resource.data.cardId
+        && request.resource.data.weekId == get(/databases/$(database)/documents/cards/$(request.resource.data.cardId)).data.weekId
+        && request.resource.data.byAuthor == owns('cards',request.resource.data.cardId);
+      allow update: if
+        (owns('cards',resource.data.cardId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['adopted']) && request.resource.data.adopted is bool)
+        || likeChange(id);
+      allow delete: if owns('comments',id);
+      match /likes/{uid} {
+        allow get: if isSelf(uid);
+        allow create: if isSelf(uid) && !owns('comments',id)
+          && request.resource.data.keys().hasOnly(['liked']) && request.resource.data.liked == true
+          && getAfter(/databases/$(database)/documents/comments/$(id)).data.likes == get(/databases/$(database)/documents/comments/$(id)).data.likes + 1;
+        allow delete: if isSelf(uid)
+          && getAfter(/databases/$(database)/documents/comments/$(id)).data.likes == get(/databases/$(database)/documents/comments/$(id)).data.likes - 1;
+      }
+    }
+    function likeChange(id) {
+      let p = /databases/$(database)/documents/comments/$(id)/likes/$(request.auth.uid);
+      let before = resource.data.likes;
+      let after = request.resource.data.likes;
+      return isMember() && !owns('comments',id)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes'])
+        && after is int && after >= 0
+        && ((!exists(p) && existsAfter(p) && after == before + 1)
+          || (exists(p) && !existsAfter(p) && after == before - 1));
+    }
+    // One immutable completion per user and round/battle. Scores are replayed by ops before publishing.
+    function newVote(field) {
+      let d=request.resource.data;
+      let old=resource == null ? {} : resource.data;
+      let before=old.get(field,{});
+      let after=d[field];
+      let key=d._key;
+      let v=after[key];
+      return d.keys().hasOnly([field,'_key']) && key is string && !(key in before)
+        && after.diff(before).affectedKeys().hasOnly([key])
+        && v.keys().hasOnly(['points','seen','finishedAt','audit'])
+        && v.points is map && v.seen is list && v.seen.size() >= 2 && v.seen.size() <= 200
+        && v.seen.toSet().size() == v.seen.size() && v.points.keys().hasOnly(v.seen)
+        && v.audit is map && v.audit.v == 1 && v.audit.rounds is list && v.audit.choices is list
+        && v.audit.rounds.size() >= 1 && v.audit.rounds.size() <= 200 && v.audit.choices.size() >= 1
+        && v.audit.dual == (field == 'weeks' ? cfg().get('dualPass',2) : cfg().get('pkDualPass',1));
+    }
+    match /runs/{uid} {
+      allow read: if isSelf(uid) || isOps();
+      allow create, update: if isSelf(uid) && newVote('weeks');
+    }
+    match /pkruns/{uid} {
+      allow read: if isSelf(uid) || isOps();
+      allow create, update: if isSelf(uid) && newVote('battles')
+        && get(/databases/$(database)/documents/battles/$(request.resource.data._key)).data.state == 'vote';
+    }
+    match /participation/{id} {
+      allow read: if isMember();
+      allow create: if isMember() && request.resource.data.keys().hasOnly(['kind','refId','uid'])
+        && request.resource.data.uid == request.auth.uid
+        && ((request.resource.data.kind == 'week' && id == 'w_' + request.resource.data.refId + '_' + request.auth.uid
+          && request.resource.data.refId in getAfter(/databases/$(database)/documents/runs/$(request.auth.uid)).data.weeks)
+        || (request.resource.data.kind == 'battle' && id == 'b_' + request.resource.data.refId + '_' + request.auth.uid
+          && request.resource.data.refId in getAfter(/databases/$(database)/documents/pkruns/$(request.auth.uid)).data.battles));
+    }
+    match /results/{id} {
+      allow read: if isMember();
+      allow create, update: if isOps();
+    }
+    // Round lock is immutable; starting a vote freezes card deletion for all voters.
+    match /roundLocks/{week} {
+      allow read: if isMember();
+      allow create: if isMember() && request.resource.data.keys().hasOnly(['locked']) && request.resource.data.locked == true;
+    }
+    match /users/{uid}/{rest=**} { allow read, write: if isSelf(uid); }
   }
 }

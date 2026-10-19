@@ -238,7 +238,7 @@ const S = {
   settings: null, settingsLoaded: false, cards: [], runs: [], mine: {}, meta: { comments: {}, likes: {} },
   run: null, tab: 'board', openCard: null, comments: [], unsubComments: null, resultsWeek: null,
   authorsIndex: null, busy: false, draft: null, compose: { types: [TYPES[0]], kind: KINDS[0], revisedFrom: null }, wcCommentOpen: {},
-  battles: [], pkOpen: null, pkEntries: [], unsubEntries: null, pkRuns: {}, pkPublic: [], pkImg: null, pkNew: false
+  roundLocks: {}, publicResults: {}, participation: [], commentsKey: '', commentStops: [], battles: [], pkOpen: null, pkEntries: [], unsubEntries: null, pkRuns: {}, pkPublic: [], pkImg: null, pkNew: false
 };
 
 /* ---------- helpers ---------- */
@@ -257,11 +257,12 @@ const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())
 const parseISO = s => { const p = String(s || '').split('-').map(Number); return p.length === 3 && !isNaN(p[0]) ? new Date(p[0], p[1] - 1, p[2]) : new Date(); };
 const wcDays = () => { const s = S.settings; return (s && Array.isArray(s.wcDays) && s.wcDays.length) ? s.wcDays : [2, 5]; };
 function nextWcDate(from, inclusive) { const d = new Date(from.getFullYear(), from.getMonth(), from.getDate()); if (!inclusive) d.setDate(d.getDate() + 1); for (let i = 0; i < 14; i++) { if (wcDays().includes(d.getDay())) return iso(d); d.setDate(d.getDate() + 1); } return iso(d); }
-const curWeek = () => nextWcDate(new Date(), true);
+const koreaNow = () => new Date(new Date().toLocaleString('en-US', {timeZone: 'Asia/Seoul'}));
+const curWeek = () => nextWcDate(koreaNow(), true);
 const nextRound = w => nextWcDate(parseISO(w), false);
 function phase() {
   const s = S.settings; if (!s) return 'upload';
-  const now = new Date(), cur = curWeek();
+  const now = koreaNow(), cur = curWeek();
   if (s.override && s.overrideRound === cur) return s.override;
   if (iso(now) !== cur) return 'upload';
   return now.getHours() < (s.endHour ?? 18) ? 'worldcup' : 'results';
@@ -273,19 +274,14 @@ const isMine = id => !!(S.mine.cards && S.mine.cards[id]);
 const cardById = id => S.cards.find(c => c.id === id);
 const commentCount = id => S.cards._cc ? (S.cards._cc[id] || 0) : null;
 const targetWeek = () => phase() === 'upload' ? curWeek() : nextRound(curWeek());
-// 1인 '권장' 장수. 상한이 아니다 — 원하는 만큼 더 낼 수 있다 (2026-10-19 패치).
-const myRec = () => S.isOwner ? (S.settings?.ownerCards ?? 2) : (S.settings?.perPerson ?? 3);
-const countMine = w => Object.values(S.mine.cards || {}).filter(x => x === w).length;
+const myLimit = () => S.isOwner ? (S.settings?.ownerCards ?? 2) : (S.settings?.perPerson ?? 5);
+const countMine = w => S.cards.filter(c => c.weekId === w && isMine(c.id)).length;
 const poolFor = w => S.cards.filter(c => c.weekId === w && !c.urgent && c.status !== 'archived');
-const myRunDone = w => !!(S.run && S.run.weekId === w && S.run.done);
+const myRunDone = w => !!S.runs.find(r => r.id === S.uid && r.weeks && r.weeks[w]);
 function canSeeComments(card) {
-  if (!card) return false;
-  if (isMine(card.id)) return true;
-  if (card.weekId < curWeek()) return true;
-  if (card.weekId === curWeek() && phase() === 'results') return true;
-  if (myRunDone(card.weekId)) return true;
-  return false;
+  return !!card && (isOps() || isMine(card.id) || !!S.publicResults['w_'+card.weekId] || myRunDone(card.weekId));
 }
+
 function profilesInto() {
   document.querySelectorAll('[data-name]').forEach(el => { const p = S.profiles[el.dataset.name]; if (p) el.textContent = p.name || p.email || '이름 없음'; });
 }
@@ -391,18 +387,23 @@ function subscribeAll() {
   const db = S.db, uid = S.uid;
   db.doc('settings/main').onSnapshot(s => { S.settings = s.exists ? s.data() : null; S.settingsLoaded = true; if (S.settings && (ownerOf(S.settings) === S.email) !== S.isOwner) { location.reload(); return; } render(); }, e => toast('설정을 읽지 못했습니다: ' + e.code));
   db.collection('profiles').onSnapshot(q => { const p = {}; q.docs.forEach(d => p[d.id] = d.data()); S.profiles = p; profilesInto(); }, e => {});
-  db.collection('members').onSnapshot(q => { S.members = q.docs.map(d => Object.assign({ email: d.id }, d.data())); if (S.tab === 'admin') render(); }, e => {});
+  db.collection('members').onSnapshot(q => { S.members = q.docs.map(d => Object.assign({ email: d.id }, d.data())); const me=S.members.find(m=>m.email===S.email); if(!S.isOwner && (!me || (me.role||'member')!==S.role)) {location.reload();return;} if (S.tab === 'admin') render(); }, e => {});
   setInterval(() => { if (S.ready && S.settings) render(); }, 60000);
   db.collection('cards').onSnapshot(q => { S.cards = q.docs.map(d => Object.assign({ id: d.id }, d.data())); S.cards.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)); selfHealAuthor(); render(); }, e => toast('카드를 읽지 못했습니다: ' + e.code));
-  db.collection('comments').onSnapshot(q => { const cc = {}; q.docs.forEach(d => { const c = d.data(); cc[c.cardId] = (cc[c.cardId] || 0) + 1; }); S.allComments = q.docs.map(d => Object.assign({ id: d.id }, d.data())); S.cards._cc = cc; if (S.openCard) { S.comments = S.allComments.filter(c => c.cardId === S.openCard).sort((a, b) => (b.likes || 0) - (a.likes || 0) || (a.createdAt || 0) - (b.createdAt || 0)); } render(); }, e => {});
-  db.collection('runs').onSnapshot(q => { S.runs = q.docs.map(d => Object.assign({ id: d.id }, d.data())); render(); }, e => {});
+  // Comments are subscribed per card only after the access gate; never download all comments.
+  if (isOps()) db.collection('runs').onSnapshot(q => { S.runs = q.docs.map(d => Object.assign({ id: d.id }, d.data())); render(); }, e => toast('투표 기록 읽기 실패: ' + e.code));
+  else db.doc('runs/' + uid).onSnapshot(d => { S.runs = d.exists ? [Object.assign({id: d.id}, d.data())] : []; render(); }, e => toast('내 투표 기록 읽기 실패: ' + e.code));
+  db.collection('results').onSnapshot(q => { S.publicResults = {}; q.docs.forEach(d => S.publicResults[d.id] = d.data()); render(); }, e => toast('공개 집계 읽기 실패: ' + e.code));
+  db.collection('roundLocks').onSnapshot(q=>{S.roundLocks={};q.docs.forEach(d=>S.roundLocks[d.id]=true);render();},e=>{});
+  db.collection('participation').onSnapshot(q => { S.participation = q.docs.map(d => d.data()); render(); }, e => {});
   db.doc('authors/' + uid).onSnapshot(s => { S.mine = s.exists ? s.data() : {}; if (!S.mine.cards) S.mine.cards = {}; render(); }, e => {});
   db.doc('users/' + uid + '/private/run').onSnapshot(s => { S.run = s.exists ? s.data() : null; render(); }, e => {});
-  db.collection('authors').onSnapshot(q => { const ix = { cards: {}, entries: {}, comments: {} }; q.docs.forEach(d => { const a = d.data(); Object.keys(a.cards || {}).forEach(k => ix.cards[k] = d.id); Object.keys(a.entries || {}).forEach(k => ix.entries[k] = d.id); Object.keys(a.comments || {}).forEach(k => ix.comments[k] = d.id); }); S.authorsIndex = ix; render(); }, e => {});
+  if (S.isOwner) db.collection('authors').onSnapshot(q => { const ix = { cards: {}, entries: {}, comments: {} }; q.docs.forEach(d => { const a = d.data(); Object.keys(a.cards || {}).forEach(k => ix.cards[k] = d.id); Object.keys(a.entries || {}).forEach(k => ix.entries[k] = d.id); Object.keys(a.comments || {}).forEach(k => ix.comments[k] = d.id); }); S.authorsIndex = ix; render(); }, e => {});
   db.collection('battles').onSnapshot(q => { S.battles = q.docs.map(d => Object.assign({ id: d.id }, d.data())).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)); render(); }, e => {});
-  db.collection('pkruns').onSnapshot(q => { S.pkPublic = q.docs.map(d => Object.assign({ id: d.id }, d.data())); render(); }, e => {});
+  if (isOps()) db.collection('pkruns').onSnapshot(q => { S.pkPublic = q.docs.map(d => Object.assign({ id: d.id }, d.data())); render(); }, e => {});
+  else db.doc('pkruns/' + uid).onSnapshot(d => { S.pkPublic = d.exists ? [Object.assign({id:d.id}, d.data())] : []; render(); }, e => {});
   db.doc('users/' + uid + '/private/pkrun').onSnapshot(s => { S.pkRuns = s.exists ? s.data() : {}; render(); }, e => {});
-  db.doc('users/' + uid + '/private/meta').onSnapshot(s => { S.meta = s.exists ? s.data() : { comments: {}, likes: {} }; if (!S.meta.comments) S.meta.comments = {}; if (!S.meta.likes) S.meta.likes = {}; render(); }, e => {});
+  db.doc('users/' + uid + '/private/meta').onSnapshot(s => { S.meta = s.exists ? s.data() : { comments: {}, likes: {} }; if (S.meta.likeSchema !== 2) { S.meta.likes = {}; S.meta.likeSchema = 2; } if (!S.meta.comments) S.meta.comments = {}; if (!S.meta.likes) S.meta.likes = {}; render(); }, e => {});
 }
 function selfHealAuthor() {
   if (!S.db || !S.uid) return;
@@ -411,6 +412,7 @@ function selfHealAuthor() {
 
 /* ---------- render ---------- */
 function render() {
+  refreshComments();
   if (!S.ready) return;
   $('#tabAdmin').hidden = !isOps();
   if (S.tab === 'admin' && !isOps()) S.tab = 'board';
@@ -450,7 +452,7 @@ function renderBoard() {
   const cap = S.settings.target || 16;
   const mineN = countMine(w);
   let html = `<div class="stack">
-    <div class="between"><h2>${esc(weekLabel(w))} 월드컵 카드 <span class="muted num" style="font-weight:400">${pool.length}장 · 목표 ${cap}</span></h2><span class="pill ${mineN >= myRec() ? 'good' : ''}">내 카드 ${mineN}장${mineN < myRec() ? ` · 권장 ${myRec()}` : ''}</span></div>
+    <div class="between"><h2>${esc(weekLabel(w))} 월드컵 카드 <span class="muted num" style="font-weight:400">${pool.length}/${cap}</span></h2><span class="pill ${mineN >= myLimit() ? 'good' : ''}">내 카드 ${mineN}/${myLimit()}</span></div>
     <p class="small muted">${esc(S.settings.schedule || '')}</p>`;
   if (S.canWrite === false) html += `<div class="note">보기 전용 권한입니다. 카드를 올리거나 월드컵을 하려면 계란님에게 '편집자' 권한으로 다시 초대해 달라고 하세요.</div>`;
   if (urgent.length) html += `<h3 style="margin-top:4px">긴급 카드 <span class="muted small" style="font-weight:400">월드컵 없이 바로 회의 안건</span></h3><div class="feed">${urgent.map(tileHTML).join('')}</div>`;
@@ -485,7 +487,8 @@ function fieldHTML([k, label, kind, req, ph], val) {
 }
 function renderCompose() {
   const el = $('#scr-compose');
-  const w = targetWeek(), mineN = countMine(w), rec = myRec();
+  const w = targetWeek(), mineN = countMine(w), lim = myLimit();
+  const full = mineN >= lim;
   if (!el.dataset.built) {
     const d = lsGet('draft') || {};
     S.compose.types = Array.isArray(d.types) && d.types.length ? d.types : [TYPES[0]]; S.compose.kind = d.kind || KINDS[0]; S.compose.revisedFrom = d.revisedFrom || null;
@@ -509,13 +512,13 @@ function renderCompose() {
     el.dataset.built = '1';
     el.addEventListener('input', onComposeInput);
   }
-  $('#cTarget').textContent = `${weekLabel(w)} 월드컵 · 내 카드 ${mineN}장`;
+  $('#cTarget').textContent = `${weekLabel(w)} 월드컵 · 내 카드 ${mineN}/${lim}`;
   const note = $('#cNote');
   if (S.canWrite === false) note.innerHTML = `<div class="note">보기 전용 권한이라 올릴 수 없습니다.</div>`;
-  else if (mineN >= rec) note.innerHTML = `<div class="note acc">권장 ${rec}장을 채웠습니다. 상한은 없으니 더 내고 싶으면 더 올리세요 — 카드가 많을수록 월드컵이 풍성해집니다.</div>`;
+  else if (full) note.innerHTML = `<div class="note">${esc(weekLabel(w))} 몫 ${lim}장을 다 채웠습니다. 지난 카드를 고쳐 올리는 것도 이 몫에 포함됩니다.</div>`;
   else if (phase() !== 'upload') note.innerHTML = `<div class="note">오늘 월드컵이 진행 중이라 지금 올리는 카드는 ${esc(weekLabel(w))} 풀에 들어갑니다.</div>`;
   else note.innerHTML = '';
-  $('#btnSubmit').disabled = S.canWrite === false;
+  $('#btnSubmit').disabled = full || S.canWrite === false;
   document.querySelectorAll('#segType button').forEach(b => b.classList.toggle('primary', S.compose.types.includes(b.dataset.v)));
   document.querySelectorAll('#segKind button').forEach(b => b.classList.toggle('on', b.dataset.v === S.compose.kind));
   $('#cRevised').innerHTML = S.compose.revisedFrom ? `<div class="note acc">지난 카드의 수정본으로 올립니다. <button class="btn sm ghost" data-act="dropRevised">연결 끊기</button></div>` : '';
@@ -560,16 +563,15 @@ async function submitCard() {
   if (missing.length) { toast('필수 칸이 비었습니다: ' + missing.slice(0, 3).join(', ') + (missing.length > 3 ? ' 외' : '')); return; }
   if (!hasDigit(o.data) && !/http/.test(o.data)) { toast('데이터 근거에 숫자나 링크를 하나는 넣어주세요'); return; }
   if (!o.types.length) { toast('유형을 하나 이상 고르세요'); return; }
-  const w = targetWeek(); // 1인 상한 없음 — 권장 장수만 안내 (2026-10-19)
+  const w = targetWeek();
+  if (countMine(w) >= myLimit()) { toast('이번 회차 몫을 다 채웠습니다'); return; }
   S.busy = true; $('#btnSubmit').disabled = true;
   try {
     const used = new Set(S.cards.filter(c => c.weekId === w).map(c => c.no));
     let no; do { no = String.fromCharCode(65 + Math.floor(Math.random() * 6)) + '-' + String(Math.floor(Math.random() * 90) + 10); } while (used.has(no));
     const ref = S.db.collection('cards').doc();
     const card = { weekId: w, no, name: o.name, t1: o.th1a, t2: o.th1b, title: o.ti1, thumbs: o.thumbs, titles: o.titles, topic: o.topic, links: o.links, logline: o.logline, who: o.who, whyClick: o.whyClick, whyStay: o.whyStay, data: o.data, diffOld: o.diffOld, diffNew: o.diffNew, flaw: o.flaw, fix: o.fix, extra: o.extra, types: o.types, type: o.types.join(' · '), kind: o.kind, urgent: o.urgent, status: 'active', createdAt: Date.now(), revisedFrom: o.revisedFrom || null };
-    await ref.set(card);
-    const mine = Object.assign({}, S.mine); mine.cards = Object.assign({}, mine.cards || {}); mine.cards[ref.id] = w;
-    await S.db.doc('authors/' + S.uid).set(mine);
+    const batch = S.db.batch(); batch.set(ref, card); registerAuthor(batch, 'cards', ref.id, w); await batch.commit();
     lsDel('draft'); S.compose.revisedFrom = null; clearComposeForm();
     toast(`연습생 ${no}로 올라갔습니다`); setTab('board');
   } catch (e) { toast('올리지 못했습니다: ' + (e.code || e.message)); }
@@ -581,9 +583,9 @@ function openDetail(id) {
   S.openCard = id;
   if (S.unsubComments) { S.unsubComments(); S.unsubComments = null; }
   S.comments = (S.allComments || []).filter(c => c.cardId === id).sort((a, b) => (b.likes || 0) - (a.likes || 0) || (a.createdAt || 0) - (b.createdAt || 0));
-  $('#sheet').hidden = false; renderDetail(); window.scrollTo({ top: 0 });
+  $('#sheet').hidden = false; refreshComments(); renderDetail(); window.scrollTo({ top: 0 });
 }
-function closeDetail() { S.openCard = null; $('#sheet').hidden = true; $('#sheetIn').innerHTML = ''; }
+function closeDetail() { S.openCard = null; refreshComments(); $('#sheet').hidden = true; $('#sheetIn').innerHTML = ''; }
 function linksHTML(s) {
   return String(s || '').split(/\n+/).map(l => l.trim()).filter(Boolean).map(l => /^https?:\/\//.test(l) ? `<a class="lnk" href="${esc(l)}" target="_blank" rel="noopener">${esc(l.replace(/^https?:\/\//, '').slice(0, 48))}${l.length > 56 ? '…' : ''}</a>` : esc(l)).join('<br>');
 }
@@ -605,7 +607,7 @@ function briefHTML(c) {
   return `<div class="one">${esc(c.logline || c.oneLiner || '')}</div><div class="hook">${c.who ? `<div><b>누가 누르나</b> ${esc(c.who)}</div>` : ''}${c.whyClick ? `<div><b>왜 누르나</b> ${esc(c.whyClick)}</div>` : ''}${!c.who && !c.whyClick && c.hook ? `<div><b>흥행 근거</b> ${esc(c.hook)}</div>` : ''}</div>`;
 }
 function commentHTML(cm, card) {
-  const mine = !!S.meta.comments[cm.id], liked = !!S.meta.likes[cm.id];
+  const mine = !!(S.mine.comments && S.mine.comments[cm.id]), liked = !!S.meta.likes[cm.id];
   const typePill = cm.byAuthor ? '<span class="pill acc">작성자</span>' : cm.type === 'tackle' ? '<span class="pill warn">태클</span>' : '<span class="pill good">디벨롭</span>';
   const body = cm.type === 'tackle' && !cm.byAuthor
     ? `<dl class="tk"><dt>약점</dt><dd>${esc(cm.weakness)}</dd><dt>이유</dt><dd>${esc(cm.reason)}</dd><dt>대안</dt><dd>${esc(cm.alt)}</dd></dl>`
@@ -636,11 +638,11 @@ function renderDetail() {
   if (c.status !== 'selected') { const t = ownerTag('cards', c.id); if (t) pills.push(t); }
   const authorLine = c.status === 'selected' ? `<div class="note acc">선정된 카드 · 작성자 <b data-name="${esc(c.authorUid || '')}">${c.authorUid ? '…' : '(작성자가 앱을 열면 표시)'}</b></div>` : '';
   const actions = [];
-  if (mine && c.status !== 'selected' && c.weekId >= curWeek() && (phase() === 'upload' || c.weekId > curWeek())) actions.push(`<button class="btn sm danger" data-act="deleteCard" data-id="${esc(c.id)}">삭제</button>`);
+  if (mine && !S.roundLocks[c.weekId] && c.status !== 'selected' && c.weekId >= curWeek() && (phase() === 'upload' || c.weekId > curWeek())) actions.push(`<button class="btn sm danger" data-act="deleteCard" data-id="${esc(c.id)}">삭제</button>`);
   if (mine && c.status !== 'selected' && isPastRound(c.weekId)) actions.push(`<button class="btn sm" data-act="revise" data-id="${esc(c.id)}">고쳐서 다시 올리기</button>`);
   let cms;
   if (see) cms = S.comments.length ? S.comments.map(cm => commentHTML(cm, c)).join('') : `<p class="small muted">아직 코멘트가 없습니다.</p>`;
-  else cms = `<div class="note">코멘트 ${S.comments.length}개 · 이번 회차 내 월드컵을 끝내면 볼 수 있습니다. 내 코멘트는 바로 남길 수 있습니다.</div>${S.comments.filter(x => S.meta.comments[x.id]).map(cm => commentHTML(cm, c)).join('')}`;
+  else cms = `<div class="note">이번 회차 내 월드컵을 끝내면 다른 사람의 코멘트를 볼 수 있습니다. 내 코멘트는 바로 남길 수 있습니다.</div>${S.comments.filter(x => S.mine.comments && S.mine.comments[x.id]).map(cm => commentHTML(cm, c)).join('')}`;
   box.innerHTML = `<div class="sheet-bar"><div class="row"><span class="muted small">연습생 ${esc(c.no || '')} · ${esc(weekLabel(c.weekId))}</span></div><button class="btn sm" data-act="close">닫기</button></div>
     ${thumbSVG(c.t1, c.t2)}
     <div><h2>${esc(c.title)}</h2><p class="muted" style="margin-top:4px">${esc(c.name)}</p></div>
@@ -664,27 +666,35 @@ async function sendComment(btn) {
   else { doc.text = g('text'); if (!doc.text) { toast('내용을 적어주세요'); return; } }
   S.busy = true;
   try {
-    const ref = await S.db.collection('comments').add(doc);
+    const ref = S.db.collection('comments').doc();
+    const batch = S.db.batch(); batch.set(ref, doc); registerAuthor(batch, 'comments', ref.id, cardId); await batch.commit();
     const meta = Object.assign({}, S.meta); meta.comments = Object.assign({}, meta.comments || {}); meta.comments[ref.id] = true; meta.likes = meta.likes || {};
     await S.db.doc('users/' + S.uid + '/private/meta').set(meta);
-    const mine = Object.assign({}, S.mine); mine.cards = mine.cards || {}; mine.comments = Object.assign({}, mine.comments || {}); mine.comments[ref.id] = cardId;
-    await S.db.doc('authors/' + S.uid).set(mine);
+    // Authorship was committed atomically with the comment.
     box.querySelectorAll('textarea,input').forEach(i => i.value = '');
     toast('익명으로 남겼습니다');
   } catch (e) { toast('남기지 못했습니다: ' + (e.code || e.message)); }
   S.busy = false;
 }
 async function toggleLike(id) {
-  if (S.busy) return; const cm = (S.allComments || []).find(x => x.id === id); if (!cm) return;
-  const liked = !!S.meta.likes[id]; S.busy = true;
+  if (S.busy) return; S.busy = true;
   try {
-    await S.db.doc('comments/' + id).update({ likes: Math.max(0, (cm.likes || 0) + (liked ? -1 : 1)) });
-    const meta = Object.assign({}, S.meta); meta.likes = Object.assign({}, meta.likes || {}); meta.comments = meta.comments || {};
-    if (liked) delete meta.likes[id]; else meta.likes[id] = true;
-    await S.db.doc('users/' + S.uid + '/private/meta').set(meta);
-  } catch (e) { toast('실패: ' + (e.code || e.message)); }
+    const cmRef = S.db.doc('comments/' + id), likeRef = cmRef.collection('likes').doc(S.uid);
+    await S.db.runTransaction(async tx => {
+      const cm = await tx.get(cmRef), like = await tx.get(likeRef);
+      if (!cm.exists) throw new Error('코멘트가 없습니다');
+      const old = Math.max(0, cm.data().likes || 0);
+      if (like.exists) tx.delete(likeRef); else tx.set(likeRef, {liked: true});
+      tx.update(cmRef, {likes: Math.max(0, old + (like.exists ? -1 : 1))});
+    });
+    const snap = await S.db.doc('comments/' + id + '/likes/' + S.uid).get();
+    const update = {}; update['likes.' + id] = snap.exists ? true : firebase.firestore.FieldValue.delete();
+    await S.db.doc('users/' + S.uid + '/private/meta').set({comments:S.meta.comments || {}, likes:S.meta.likes || {}, likeSchema:2}, {merge:true});
+    await S.db.doc('users/' + S.uid + '/private/meta').update(update);
+  } catch (e) { toast('공감 처리 실패: ' + (e.code || e.message)); }
   S.busy = false;
 }
+
 async function toggleAdopt(id) {
   const cm = (S.allComments || []).find(x => x.id === id); if (!cm) return;
   try { await S.db.doc('comments/' + id).update({ adopted: !cm.adopted }); } catch (e) { toast('실패: ' + (e.code || e.message)); }
@@ -693,8 +703,7 @@ async function deleteCard(id) {
   if (S.busy) return; S.busy = true;
   try {
     await S.db.doc('cards/' + id).delete();
-    const mine = Object.assign({}, S.mine); mine.cards = Object.assign({}, mine.cards || {}); delete mine.cards[id];
-    await S.db.doc('authors/' + S.uid).set(mine);
+    // Keep historic author binding as an immutable tombstone.
     closeDetail(); toast('삭제했습니다');
   } catch (e) { toast('삭제 실패: ' + (e.code || e.message)); }
   S.busy = false;
@@ -705,6 +714,7 @@ function makePairs(ids) { const a = shuffle(ids), p = []; for (let i = 0; i < a.
 function roundPts(r) { return Math.min(r, 5); }
 function startRound(run, remaining, dual) {
   run.remaining = remaining; run.pairs = makePairs(remaining); run.idx = 0; run.next = [];
+  if (run.audit) run.audit.rounds.push(JSON.parse(JSON.stringify(run.pairs)));
   const bye = run.pairs.find(p => p.length === 1);
   if (bye) { run.next.push(bye[0]); run.points[bye[0]] = (run.points[bye[0]] || 0) + roundPts(run.round); run.pairs = run.pairs.filter(p => p.length === 2); run.byeId = bye[0]; } else run.byeId = null;
   run.dualLeft = remaining.length > 4 ? Math.max(0, Math.min(dual ?? 2, run.pairs.length - 1)) : 0;
@@ -714,6 +724,7 @@ function applyDecision(run, choice, dual) {
   const pts = roundPts(run.round);
   const pass = id => { run.next.push(id); run.points[id] = (run.points[id] || 0) + pts; };
   if (choice === 'top') pass(pair[0]); else if (choice === 'bottom') pass(pair[1]); else { if (run.dualLeft <= 0) return false; pass(pair[0]); pass(pair[1]); run.dualLeft--; }
+  if (run.audit) run.audit.choices.push(choice);
   run.idx++;
   if (run.idx >= run.pairs.length) {
     if (run.next.length <= 1) { run.done = true; run.finishedAt = Date.now(); return true; }
@@ -725,25 +736,41 @@ async function startRun() {
   if (S.busy) return;
   const w = curWeek(); const pool = poolFor(w).filter(c => !isMine(c.id)).map(c => c.id);
   if (pool.length < 2) { toast('월드컵을 하려면 내 카드를 뺀 카드가 2장 이상 있어야 합니다'); return; }
-  const run = { weekId: w, round: 1, points: {}, seen: pool.slice(), done: false, startedAt: Date.now() };
+  if (phase() !== 'worldcup' || myRunDone(w)) { toast('진행 시간이 아니거나 이미 완료했습니다'); return; }
+  const run = { weekId: w, round: 1, points: {}, seen: pool.slice(), done: false, startedAt: Date.now(), audit:{v:1,dual:S.settings.dualPass ?? 2,rounds:[],choices:[]} };
   startRound(run, pool, S.settings.dualPass ?? 2);
+  try { await S.db.runTransaction(async tx=>{const ref=S.db.doc('roundLocks/'+w);const snap=await tx.get(ref);if(!snap.exists)tx.set(ref,{locked:true});}); } catch(e){toast('대진 잠금 실패: '+(e.code||e.message));return;}
   await saveRun(run);
 }
-async function saveRun(run) { S.busy = true; try { await S.db.doc('users/' + S.uid + '/private/run').set(run); S.run = run; } catch (e) { toast('저장 실패: ' + (e.code || e.message)); } S.busy = false; render(); }
+async function saveRun(run) {
+  S.busy = true;
+  try { await S.db.doc('users/' + S.uid + '/private/run').set(run); S.run = run; return true; }
+  catch (e) { toast('저장 실패: ' + (e.code || e.message)); return false; }
+  finally { S.busy = false; render(); }
+}
+
 async function decide(choice) {
-  if (S.busy || !S.run || S.run.done) return;
+  if (S.busy || !S.run || S.run.done || phase() !== 'worldcup') return;
   const run = JSON.parse(JSON.stringify(S.run)); if (!run.pairs[run.idx]) return;
   const done = applyDecision(run, choice, S.settings.dualPass ?? 2);
-  await saveRun(run); if (done) await publishRun(run);
+  if (await saveRun(run)) { if (done) await publishRun(run); }
 }
 async function publishRun(run) {
   try {
-    const ref = S.db.doc('runs/' + S.uid); const s = await ref.get(); const prev = s.exists ? s.data() : {};
-    const weeks = Object.assign({}, prev.weeks || {}); weeks[run.weekId] = { points: run.points, seen: run.seen, finishedAt: run.finishedAt };
-    await ref.set({ weeks });
+    const ref = S.db.doc('runs/' + S.uid);
+    await S.db.runTransaction(async tx => {
+      const s = await tx.get(ref), prev = s.exists ? s.data() : {};
+      if (prev.weeks && prev.weeks[run.weekId]) return;
+      const weeks = Object.assign({}, prev.weeks || {});
+      weeks[run.weekId] = {points:run.points, seen:run.seen, finishedAt:run.finishedAt, audit:run.audit};
+      tx.set(ref, {weeks, _key:run.weekId});
+      tx.set(S.db.doc('participation/w_' + run.weekId + '_' + S.uid), {kind:'week', refId:run.weekId, uid:S.uid});
+    });
     toast('월드컵 완료! 이제 다른 사람 코멘트를 볼 수 있습니다', 3000);
-  } catch (e) { toast('결과 공개 저장 실패: ' + (e.code || e.message)); }
+  } catch (e) { toast('집계 등록 실패: 아래 재시도 버튼을 눌러주세요. ' + (e.code || e.message), 6000); }
+  render();
 }
+
 function matchCardHTML(c, pos, showDetail) {
   const key = pos + ':' + c.id; const open = !!S.wcCommentOpen[key];
   return `<div class="mcard">${thumbSVG(c.t1, c.t2)}<div class="ttl">${esc(c.title)}</div>${briefHTML(c)}
@@ -753,7 +780,7 @@ function matchCardHTML(c, pos, showDetail) {
 function renderWorldcup() {
   const el = $('#scr-worldcup'); const w = curWeek(); const ph = phase(); const run = S.run;
   const pool = poolFor(w).filter(c => !isMine(c.id));
-  const doneN = S.runs.filter(r => r.weeks && r.weeks[w]).length;
+  const doneN = doneCount('week',w);
   if (ph === 'upload') { el.innerHTML = `<div class="stack"><h2>기획 월드컵</h2><div class="empty"><b>다음 월드컵은 ${esc(weekLabel(w))}</b>당일 00:00부터 ${S.settings.endHour ?? 18}:00까지 한 판씩 합니다. 지금 모인 카드 ${poolFor(w).length}장.<br>${esc(S.settings.schedule || '')}</div></div>`; return; }
   if (ph === 'results') { el.innerHTML = `<div class="stack"><h2>기획 월드컵</h2><div class="empty"><b>${esc(weekLabel(w))} 월드컵이 끝났습니다</b>결과 탭에서 순위와 코멘트를 확인하세요. 완료 ${doneN}명.</div></div>`; return; }
   if (!run || run.weekId !== w) {
@@ -764,6 +791,9 @@ function renderWorldcup() {
       <button class="btn primary wide" data-act="startRun" ${S.canWrite === false || pool.length < 2 ? 'disabled' : ''}>시작하기</button></div></div>`;
     return;
   }
+  if (!run.done && !run.audit) { el.innerHTML = '<div class="note">업데이트 전 진행 기록입니다. 카드와 기존 완료 기록은 보존됩니다. 이번 진행만 새로 시작해주세요.</div><button class="btn" data-act="restartRun">새 대진 시작</button>'; return; }
+  if (run.done && !run.audit && !myRunDone(w)) { el.innerHTML = '<div class="note">업데이트 전 투표가 집계에 등록되지 않았습니다. 현재 회차 투표만 다시 진행해주세요.</div><button class="btn" data-act="restartRun">이번 투표 다시 시작</button>'; return; }
+  if (run.done && !myRunDone(w)) { el.innerHTML = '<div class="note">투표는 끝났지만 집계 등록이 아직 완료되지 않았습니다.</div><button class="btn primary" data-act="retryRun">집계 등록 재시도</button>'; return; }
   if (run.done) { el.innerHTML = `<div class="stack"><h2>기획 월드컵</h2><div class="card stack"><div class="roundhead"><div class="big">완료</div><span class="pill good">완료 ${doneN}명</span></div><p class="muted small">결과는 결과 공개 때 전원 합산으로 나옵니다. 이제 게시판에서 다른 사람의 코멘트를 보고 남길 수 있습니다.</p><button class="btn wide" data-act="goBoard">게시판으로</button></div></div>`; return; }
   const pair = run.pairs[run.idx]; const a = cardById(pair[0]), b = cardById(pair[1]);
   if (!a || !b) { el.innerHTML = `<div class="stack"><h2>기획 월드컵</h2><div class="note">카드가 삭제되어 대진을 다시 짭니다.</div><button class="btn" data-act="restartRun">다시 시작</button></div>`; return; }
@@ -784,7 +814,7 @@ function renderWorldcup() {
 /* 썸네일·제목 배틀 — one battle per video; anonymous 시안 (image or 2-line text) + title + 비고; same bracket engine as the card worldcup */
 const isMineEntry = id => !!(S.mine.entries && S.mine.entries[id]);
 const pkState = { open: '시안 모집 중', vote: '투표 중', closed: '종료' };
-function entryThumb(e) { return e.img ? `<img class="thumb-img" src="${e.img}" alt="">` : thumbSVG(e.t1, e.t2); }
+function entryThumb(e) { const img = typeof e.img === 'string' && /^(data:image\/(jpeg|png|webp);base64,|https:\/\/)/i.test(e.img) ? e.img : ''; return img ? `<img class="thumb-img" src="${esc(img)}" alt="" referrerpolicy="no-referrer">` : thumbSVG(e.t1, e.t2); }
 function openBattle(id) {
   S.pkOpen = id; S.pkNew = false; S.pkImg = null;
   if (S.unsubEntries) { S.unsubEntries(); S.unsubEntries = null; }
@@ -794,7 +824,8 @@ function openBattle(id) {
 }
 function closeBattle() { S.pkOpen = null; if (S.unsubEntries) { S.unsubEntries(); S.unsubEntries = null; } S.pkEntries = []; render(); }
 function pkStandings(b) {
-  const done = S.pkPublic.map(r => r.battles && r.battles[b.id]).filter(Boolean); const n = done.length;
+  if (!isOps()) { const r=S.publicResults['b_'+b.id] || {n:0,scores:{}}; return {n:r.n, rows:S.pkEntries.map(e=>Object.assign({e,total:0,exp:0,norm:0},r.scores[e.id]||{})).sort((a,b)=>b.norm-a.norm||b.total-a.total||(a.e.createdAt||0)-(b.e.createdAt||0))}; }
+  const done = S.pkPublic.map(r => r.battles && r.battles[b.id]).filter(Boolean).map(v => verifiedVote(v, S.pkEntries.map(e => e.id))).filter(Boolean); const n = done.length;
   const rows = S.pkEntries.map(e => { let total = 0, exp = 0; done.forEach(r => { if (r.seen && r.seen.includes(e.id)) { exp++; total += (r.points && r.points[e.id]) || 0; } }); return { e, total, exp, norm: exp ? total / exp * n : 0 }; });
   rows.sort((x, y) => y.norm - x.norm || y.total - x.total || (x.e.createdAt || 0) - (y.e.createdAt || 0));
   return { rows, n };
@@ -804,10 +835,10 @@ function renderPk() {
   if (S.pkNew) { renderPkNew(el); return; }
   if (S.pkOpen) { renderBattle(el); return; }
   const rows = S.battles.map(b => {
-    const myRun = S.pkRuns[b.id]; const doneN = S.pkPublic.filter(r => r.battles && r.battles[b.id]).length;
+    const myRun = S.pkRuns[b.id]; const doneN = doneCount('battle',b.id);
     const mineN = Object.values(S.mine.entries || {}).filter(x => x === b.id).length;
     const cls = b.state === 'vote' ? 'on' : b.state === 'closed' ? '' : 'acc';
-    const sub = b.state === 'open' ? `시안 ${b.entryCount || 0}장 · 내 시안 ${mineN}` : b.state === 'vote' ? `시안 ${b.entryCount || 0}장 · 투표 완료 ${doneN}명${myRun && myRun.done && myRun.battleId === b.id ? ' · 나 완료' : ''}` : `시안 ${b.entryCount || 0}장 · ${doneN}명 합산${b.selectedEntry ? ' · 선정 완료' : ''}`;
+    const sub = b.state === 'open' ? `시안 수는 배틀에서 확인 · 내 시안 ${mineN}` : b.state === 'vote' ? `시안 수는 배틀에서 확인 · 투표 완료 ${doneN}명${myRun && myRun.done && myRun.battleId === b.id ? ' · 나 완료' : ''}` : `시안 수는 배틀에서 확인 · ${doneN}명 합산${b.selectedEntry ? ' · 선정 완료' : ''}`;
     return `<button class="brow" data-act="openBattle" data-id="${esc(b.id)}"><div class="bt"><div class="ttl">${esc(b.title)}</div><div class="sub">${esc(sub)}</div></div><span class="pill ${cls}">${pkState[b.state] || b.state}</span></button>`;
   });
   el.innerHTML = `<div class="stack">
@@ -865,7 +896,7 @@ function renderBattle(el) {
   const b = S.battles.find(x => x.id === S.pkOpen);
   if (!b) { el.innerHTML = `<div class="stack"><div class="sheet-bar"><h2>배틀</h2><button class="btn sm" data-act="closeBattle">목록</button></div><div class="empty">배틀을 찾을 수 없습니다</div></div>`; return; }
   const canManage = isOps() || b.creatorUid === S.uid;
-  const myRun = S.pkRuns[b.id]; const doneN = S.pkPublic.filter(r => r.battles && r.battles[b.id]).length;
+  const myRun = S.pkRuns[b.id]; const doneN = doneCount('battle',b.id);
   const card = b.cardId ? cardById(b.cardId) : null;
   let body = '';
   const head = `<div class="sheet-bar"><button class="btn sm" data-act="closeBattle">← 목록</button><span class="pill ${b.state === 'vote' ? 'on' : b.state === 'closed' ? '' : 'acc'}">${pkState[b.state]}</span></div>
@@ -880,7 +911,7 @@ function renderBattle(el) {
     body = renderPkVote(b, myRun, doneN);
   } else {
     const { rows, n } = pkStandings(b);
-    body = `<h3>결과 <span class="muted small" style="font-weight:400">${n}명 합산</span></h3>
+    body = `<h3>결과 <span class="muted small" style="font-weight:400">${n}명 합산</span></h3>${!isOps() && !S.publicResults['b_'+b.id] ? '<div class="note">운영자가 관리 탭에서 집계 결과를 공개하면 표시됩니다.</div>' : ''}
       <div class="card" style="padding:4px 12px">${rows.map((r, i) => `<div class="rank ${i < 3 ? 'top' : ''}"><div class="n num">${i + 1}</div><div class="th">${entryThumb(r.e)}</div><div class="body"><div class="ttl">${esc(r.e.title)}</div><div class="sc num"><b>${r.norm.toFixed(1)}</b>점 · 원점수 ${r.total} · ${r.exp}/${n}명이 봄</div>${r.e.note ? `<div class="small muted" style="margin-top:4px;white-space:pre-wrap">${esc(r.e.note)}</div>` : ''}<div class="row" style="margin-top:6px">${r.e.status === 'selected' ? `<span class="pill on">선정</span><span class="small">작성자 <b data-name="${esc(r.e.authorUid || '')}">${r.e.authorUid ? '…' : '(작성자가 앱을 열면 표시)'}</b></span>` : ownerTag('entries', r.e.id)}${S.isOwner ? (r.e.status === 'selected' ? `<button class="btn sm ghost" data-act="pkSelect" data-id="${esc(r.e.id)}" data-v="0">선정 취소</button>` : `<button class="btn sm primary" data-act="pkSelect" data-id="${esc(r.e.id)}" data-v="1">선정</button>`) : ''}</div></div></div>`).join('') || '<p class="small muted">시안이 없습니다.</p>'}</div>
       <p class="small muted">상위 3개를 유튜브 '테스트 및 비교' 후보로 쓰고, 나머지는 교체 벤치로 두세요.</p>`;
   }
@@ -890,6 +921,8 @@ function renderBattle(el) {
   const comp = $('#pkComposer'); if (comp) comp.addEventListener('input', () => { const t1 = $('#pk_t1').value, t2 = $('#pk_t2').value; lsSet('pkdraft:' + b.id, { t1, t2, title: $('#pk_title').value, note: $('#pk_note').value }); const c = $('#pk_cnt'); if (c) { c.textContent = `${t1.length}/${t2.length}`; c.style.color = (t1.length > 10 || t2.length > 10) ? 'var(--warn)' : ''; } if (!S.pkImg) $('#pkPreview').innerHTML = thumbSVG(t1 || '썸네일 1줄', t2 || '썸네일 2줄'); });
 }
 function renderPkVote(b, run, doneN) {
+  if (run && !run.done && !run.audit) return '<div class="note">업데이트 전 진행 기록입니다. 이번 진행만 새로 시작해주세요.</div><button class="btn" data-act="pkStart">새 대진 시작</button>';
+  if (run && run.done && !S.pkPublic.some(r => r.id === S.uid && r.battles && r.battles[b.id])) return '<div class="note">집계 등록이 아직 완료되지 않았습니다.</div><button class="btn" data-act="retryPk">집계 등록 재시도</button>';
   const pool = S.pkEntries.filter(e => !isMineEntry(e.id)).map(e => e.id);
   const fresh = !run || run.battleId !== b.id;
   if (fresh) return `<div class="card stack"><div class="roundhead"><div class="big">${pool.length}<em>강</em></div><span class="pill">완료 ${doneN}명</span></div><p class="muted small">내 시안을 뺀 ${pool.length}장. 1라운드는 썸네일과 제목만 보고 폰 피드에서 누를 쪽을 고르고, ${S.settings.pkNoteFrom ?? 2}라운드부터 비고(왜 먹히나)가 열립니다. 5분이면 끝납니다.</p><button class="btn primary wide" data-act="pkStart" ${S.canWrite === false || pool.length < 2 ? 'disabled' : ''}>시작하기</button></div>`;
@@ -928,16 +961,14 @@ async function pkSubmit() {
   const t1 = $('#pk_t1').value.trim(), t2 = $('#pk_t2').value.trim(), title = $('#pk_title').value.trim(), note = $('#pk_note').value.trim();
   if (!title) { toast('제목을 적어주세요'); return; }
   if (!S.pkImg && (!t1 || !t2)) { toast('이미지가 없으면 썸네일 문구 2줄이 필요합니다'); return; }
-  const lim = S.settings.pkPerPerson ?? 3; if (Object.values(S.mine.entries || {}).filter(x => x === b.id).length >= lim) { toast('이 배틀 몫을 다 냈습니다'); return; }
+  const lim = S.settings.pkPerPerson ?? 3; if (S.pkEntries.filter(e => isMineEntry(e.id)).length >= lim) { toast('이 배틀 몫을 다 냈습니다'); return; }
   S.busy = true;
   try {
     const used = new Set(S.pkEntries.map(e => e.no));
     let no; do { no = String.fromCharCode(65 + Math.floor(Math.random() * 6)) + '-' + String(Math.floor(Math.random() * 90) + 10); } while (used.has(no));
     const ref = S.db.collection('entries').doc();
-    await ref.set({ battleId: b.id, no, t1, t2, title, note, img: S.pkImg || null, status: 'active', createdAt: Date.now() });
-    const mine = Object.assign({}, S.mine); mine.entries = Object.assign({}, mine.entries || {}); mine.entries[ref.id] = b.id; mine.cards = mine.cards || {};
-    await S.db.doc('authors/' + S.uid).set(mine);
-    await S.db.doc('battles/' + b.id).update({ entryCount: (b.entryCount || 0) + 1 });
+    const batch = S.db.batch(); batch.set(ref, { battleId: b.id, no, t1, t2, title, note, img: S.pkImg || null, status: 'active', createdAt: Date.now() });
+    registerAuthor(batch, 'entries', ref.id, b.id); await batch.commit();
     lsDel('pkdraft:' + b.id); S.pkImg = null; toast(`시안 ${no}로 냈습니다`);
   } catch (e) { toast('내지 못했습니다: ' + (e.code || e.message)); }
   S.busy = false; render();
@@ -946,8 +977,7 @@ async function pkDeleteEntry(id) {
   if (S.busy) return; const b = S.battles.find(x => x.id === S.pkOpen); S.busy = true;
   try {
     await S.db.doc('entries/' + id).delete();
-    const mine = Object.assign({}, S.mine); mine.entries = Object.assign({}, mine.entries || {}); delete mine.entries[id]; await S.db.doc('authors/' + S.uid).set(mine);
-    if (b) await S.db.doc('battles/' + b.id).update({ entryCount: Math.max(0, (b.entryCount || 1) - 1) });
+    // No client-side battle counter mutation; count comes from actual entries.
     toast('삭제했습니다');
   } catch (e) { toast('실패: ' + (e.code || e.message)); }
   S.busy = false;
@@ -960,24 +990,25 @@ async function pkDeleteBattle() {
   const b = S.battles.find(x => x.id === S.pkOpen); if (!b || S.pkEntries.length) return;
   try { await S.db.doc('battles/' + b.id).delete(); closeBattle(); toast('배틀을 삭제했습니다'); } catch (e) { toast('실패: ' + (e.code || e.message)); }
 }
-async function pkSaveRuns(runs) { S.busy = true; try { await S.db.doc('users/' + S.uid + '/private/pkrun').set(runs); S.pkRuns = runs; } catch (e) { toast('저장 실패: ' + (e.code || e.message)); } S.busy = false; render(); }
+async function pkSaveRuns(runs) { S.busy = true; try { await S.db.doc('users/' + S.uid + '/private/pkrun').set(runs); S.pkRuns = runs; return true; } catch(e) {toast('저장 실패: ' + (e.code || e.message)); return false;} finally {S.busy=false;render();} }
+
 async function pkStart() {
   if (S.busy) return; const b = S.battles.find(x => x.id === S.pkOpen); if (!b) return;
   const pool = S.pkEntries.filter(e => !isMineEntry(e.id)).map(e => e.id);
   if (pool.length < 2) { toast('내 시안을 뺀 시안이 2장 이상 있어야 합니다'); return; }
-  const run = { battleId: b.id, round: 1, points: {}, seen: pool.slice(), done: false, startedAt: Date.now() };
+  if (b.state !== 'vote' || S.pkPublic.some(r => r.id === S.uid && r.battles && r.battles[b.id])) { toast('투표 시간이 아니거나 이미 완료했습니다'); return; }
+  const run = { battleId: b.id, round: 1, points: {}, seen: pool.slice(), done: false, startedAt: Date.now(), audit:{v:1,dual:S.settings.pkDualPass ?? 1,rounds:[],choices:[]} };
   startRound(run, pool, S.settings.pkDualPass ?? 1);
   const runs = Object.assign({}, S.pkRuns); runs[b.id] = run; await pkSaveRuns(runs);
 }
 async function pkDecide(choice) {
-  if (S.busy) return; const b = S.battles.find(x => x.id === S.pkOpen); if (!b) return;
+  if (S.busy) return; const b = S.battles.find(x => x.id === S.pkOpen); if (!b || b.state !== 'vote') return;
   const run = JSON.parse(JSON.stringify(S.pkRuns[b.id] || null)); if (!run || run.done || !run.pairs[run.idx]) return;
   const done = applyDecision(run, choice, S.settings.pkDualPass ?? 1);
-  const runs = Object.assign({}, S.pkRuns); runs[b.id] = run; await pkSaveRuns(runs);
-  if (done) {
-    try { const ref = S.db.doc('pkruns/' + S.uid); const s = await ref.get(); const prev = s.exists ? s.data() : {}; const battles = Object.assign({}, prev.battles || {}); battles[b.id] = { points: run.points, seen: run.seen, finishedAt: run.finishedAt }; await ref.set({ battles }); toast('투표 완료!'); } catch (e) { toast('결과 저장 실패: ' + (e.code || e.message)); }
-  }
+  const runs = Object.assign({}, S.pkRuns); runs[b.id] = run;
+  if (await pkSaveRuns(runs)) { if(done) await publishPkRun(b.id, run); }
 }
+
 async function pkSelect(id, on) {
   if (S.busy) return; const b = S.battles.find(x => x.id === S.pkOpen); S.busy = true;
   try {
@@ -995,7 +1026,8 @@ function selfHealEntryAuthor() {
 
 /* results */
 function standings(w) {
-  const done = S.runs.map(r => r.weeks && r.weeks[w]).filter(Boolean); const n = done.length;
+  if (!isOps()) { const r=S.publicResults['w_'+w] || {n:0,scores:{}}; return {n:r.n, rows:S.cards.filter(c=>c.weekId===w&&!c.urgent).map(card=>Object.assign({card,total:0,exp:0,norm:0},r.scores[card.id]||{})).sort((a,b)=>b.norm-a.norm||b.total-a.total||(a.card.createdAt||0)-(b.card.createdAt||0))}; }
+  const done = S.runs.map(r => r.weeks && r.weeks[w]).filter(Boolean).map(v => verifiedVote(v, poolFor(w).map(c => c.id))).filter(Boolean); const n = done.length;
   const cards = S.cards.filter(c => c.weekId === w && !c.urgent);
   const rows = cards.map(c => { let total = 0, exp = 0; done.forEach(r => { if (r.seen && r.seen.includes(c.id)) { exp++; total += (r.points && r.points[c.id]) || 0; } }); return { card: c, total, exp, norm: exp ? total / exp * n : 0 }; });
   rows.sort((x, y) => y.norm - x.norm || y.total - x.total || (x.card.createdAt || 0) - (y.card.createdAt || 0));
@@ -1005,9 +1037,10 @@ function renderResults() {
   const el = $('#scr-results'); const w = curWeek(); const ph = phase();
   const weeks = [...new Set(S.cards.map(c => c.weekId))].filter(x => x < w || (x === w && ph === 'results')).sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
   if (!S.resultsWeek || !weeks.includes(S.resultsWeek)) S.resultsWeek = weeks[0] || null;
-  const doneN = S.runs.filter(r => r.weeks && r.weeks[w]).length;
+  const doneN = doneCount('week',w);
   let html = `<div class="stack"><div class="between"><h2>결과</h2>${weeks.length > 1 ? `<select id="rw" data-act="pickWeek">${weeks.map(x => `<option value="${x}" ${x === S.resultsWeek ? 'selected' : ''}>${esc(weekLabel(x))}</option>`).join('')}</select>` : ''}</div>`;
   if (ph === 'worldcup') html += `<div class="note">${esc(weekLabel(w))} 월드컵 진행 중 · 완료 ${doneN}명. ${S.settings.endHour ?? 18}:00에 전원 합산으로 열립니다.</div>`;
+  if (!isOps() && weeks.some(x => !S.publicResults['w_'+x])) html += '<div class="note">공개 집계가 아직 없습니다. 계란님 또는 우재가 관리 탭에서 결과를 집계·공개해주세요.</div>';
   if (weeks.length === 0) html += `<div class="empty"><b>아직 결과가 없습니다</b>첫 월드컵이 끝나면 여기에 순위가 나옵니다.</div></div>`;
   if (!S.resultsWeek) { el.innerHTML = html + '</div>'; return; }
   const rw = S.resultsWeek; const { rows, n } = standings(rw);
@@ -1046,6 +1079,7 @@ async function renderAdmin() {
   const upcoming = [w, nextRound(w), nextRound(nextRound(w))].map(weekLabel).join(' · ');
   el.innerHTML = `<div class="stack">
     <h2>관리</h2>
+    <div class="card stack"><h3>전체 집계 · 계란님/운영자</h3><p class="small muted">현재 회차 유효 투표 ${standings(w).n}명. 개인별 원점수를 그대로 믿지 않고 대진·선택 기록으로 다시 계산합니다. 마감 후 아래 버튼으로 멤버용 결과를 공개합니다.</p><details><summary>현재 회차 집계 확인</summary>${standings(w).rows.map((r,i)=>`<p class="small">${i+1}. ${esc(r.card.title)} · ${r.norm.toFixed(1)}점</p>`).join('')}</details><button class="btn primary" data-act="publishResults">마감된 결과 전체 집계·공개</button><p class="small muted">투표 원본을 읽는 운영자는 작성자를 추정할 여지가 있으므로 신뢰된 계정만 지정하세요.</p></div>
     <div class="card stack"><div class="between"><h3>지금 단계 · ${esc(weekLabel(w))}</h3><span class="pill on">${PHASE[ph]}${forced ? ' (강제)' : ''}</span></div>
       <p class="small muted">단계는 시간으로 자동 바뀝니다. 월드컵 요일 00:00부터 ${s.endHour ?? 18}:00까지 월드컵, 그 뒤 자정까지 결과 공개, 나머지는 카드 모집입니다. 다음 월드컵: ${esc(upcoming)}</p>
       <details class="more"><summary>이번 회차만 단계 강제 (마감 연장 등)</summary><div class="row" style="margin-top:8px">${['upload', 'worldcup', 'results'].map(x => `<button class="btn sm ${forced && s.override === x ? 'primary' : ''}" data-act="override" data-v="${x}">${PHASE[x]}</button>`).join('')}<button class="btn sm ghost" data-act="override" data-v="">자동으로</button></div><p class="small muted" style="margin-top:6px">강제한 단계는 다음 회차가 되면 자동으로 풀립니다.</p></details></div>
@@ -1060,7 +1094,7 @@ async function renderAdmin() {
     <div class="card stack"><h3>설정</h3>
       <div class="field"><label>월드컵 요일</label><div class="row" id="wcDaysBox">${[0, 1, 2, 3, 4, 5, 6].map(d => `<label class="check" style="gap:4px"><input type="checkbox" data-wcday="${d}" ${wcDays().includes(d) ? 'checked' : ''}> ${DAYS[d]}</label>`).join('')}</div></div>
       <div class="two"><div class="field"><label for="s_endHour">월드컵 마감 시각 (시)</label><input id="s_endHour" type="number" min="1" max="23" value="${s.endHour ?? 18}"></div><div class="field"><label for="s_target">회차 목표 카드 수</label><input id="s_target" type="number" min="4" max="64" value="${s.target ?? 16}"></div></div>
-      <div class="two"><div class="field"><label for="s_perPerson">1인 권장 카드 수 <span class="muted small">(상한 아님)</span></label><input id="s_perPerson" type="number" min="1" max="20" value="${s.perPerson ?? 3}"></div><div class="field"><label for="s_ownerCards">계란님 권장 카드 수</label><input id="s_ownerCards" type="number" min="0" max="20" value="${s.ownerCards ?? 2}"></div></div>
+      <div class="two"><div class="field"><label for="s_perPerson">1인 카드 상한</label><input id="s_perPerson" type="number" min="1" max="20" value="${s.perPerson ?? 3}"></div><div class="field"><label for="s_ownerCards">계란님 카드 수</label><input id="s_ownerCards" type="number" min="0" max="20" value="${s.ownerCards ?? 2}"></div></div>
       <div class="two"><div class="field"><label for="s_dualPass">둘 다 통과 (라운드당)</label><input id="s_dualPass" type="number" min="0" max="10" value="${s.dualPass ?? 2}"></div><div class="field"><label for="s_detailFrom">상세 공개 라운드</label><input id="s_detailFrom" type="number" min="1" max="6" value="${s.detailFrom ?? 2}"></div></div>
       <div class="two"><div class="field"><label for="s_pkPerPerson">썸네일 배틀 1인 시안 수</label><input id="s_pkPerPerson" type="number" min="1" max="10" value="${s.pkPerPerson ?? 3}"></div><div class="field"><label for="s_pkDualPass">배틀 둘 다 통과</label><input id="s_pkDualPass" type="number" min="0" max="5" value="${s.pkDualPass ?? 1}"></div></div>
       <div class="field"><label for="s_schedule">일정 안내 문구</label><input id="s_schedule" value="${esc(s.schedule || '')}"></div>
@@ -1119,6 +1153,9 @@ document.addEventListener('click', e => {
     case 'sendComment': sendComment(t); break;
     case 'like': toggleLike(id); break;
     case 'adopt': toggleAdopt(id); break;
+    case 'publishResults': publishResults(); break;
+    case 'retryRun': if(S.run && S.run.audit) publishRun(S.run); else toast('업데이트 전 미등록 기록입니다. 운영자에게 확인해주세요'); break;
+    case 'retryPk': {const r=S.pkRuns[S.pkOpen]; if(r && r.audit) publishPkRun(S.pkOpen,r); else toast('업데이트 전 미등록 기록입니다. 운영자에게 확인해주세요'); break;}
     case 'startRun': startRun(); break;
     case 'restartRun': startRun(); break;
     case 'decide': decide(v); break;
@@ -1152,6 +1189,95 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('change', e => { if (e.target.id === 'rw') { S.resultsWeek = e.target.value; render(); } });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.openCard) closeDetail(); });
+
+/* Internal-team security update. Existing cards and author bindings are never migrated/deleted. */
+function registerAuthor(batch, kind, id, value) {
+  batch.set(S.db.doc('authors/' + S.uid), {[kind]:{[id]:value}, _change:{kind,id}}, {merge:true});
+}
+function doneCount(kind, id) {
+  const live = new Set(S.participation.filter(p=>p.kind===kind && p.refId===id).map(p=>p.uid));
+  const raw = kind==='week' ? S.runs.filter(r=>r.weeks&&r.weeks[id]) : S.pkPublic.filter(r=>r.battles&&r.battles[id]);
+  raw.forEach(r=>live.add(r.id));
+  const pub=S.publicResults[(kind==='week'?'w_':'b_')+id];
+  return Math.max(live.size, pub ? pub.n : 0);
+}
+function refreshComments() {
+  if(!S.db || !S.ready) return;
+  const card=cardById(S.openCard), allowed=card && canSeeComments(card);
+  const ids=card ? Object.keys(S.mine.comments||{}).filter(id=>S.mine.comments[id]===card.id) : [];
+  const key=card ? card.id+':'+!!allowed+':'+ids.join(',') : '';
+  if(key===S.commentsKey) return;
+  S.commentsKey=key; S.commentStops.forEach(stop=>stop()); S.commentStops=[]; S.comments=[]; S.allComments=[];
+  if(!card) return;
+  const cache={};
+  const update=()=>{ if(S.commentsKey!==key)return; S.allComments=Object.values(cache); S.comments=S.allComments.slice().sort((a,b)=>(b.likes||0)-(a.likes||0)||(a.createdAt||0)-(b.createdAt||0)); render(); };
+  if(allowed) S.commentStops.push(S.db.collection('comments').where('cardId','==',card.id).where('weekId','==',card.weekId).onSnapshot(q=>{ Object.keys(cache).forEach(k=>delete cache[k]); q.docs.forEach(d=>cache[d.id]=Object.assign({id:d.id},d.data())); update(); },e=>toast('코멘트 읽기 실패: '+e.code)));
+  else ids.forEach(id=>S.commentStops.push(S.db.doc('comments/'+id).onSnapshot(d=>{if(d.exists)cache[d.id]=Object.assign({id:d.id},d.data());else delete cache[d.id];update();},()=>{})));
+}
+// Recompute scores from pairings and choices. A forged points map is ignored.
+// This is an internal-team integrity check, not server attestation of UI activity.
+function verifiedVote(v, eligible) {
+  try {
+    if(!v || !Array.isArray(v.seen) || v.seen.length<2 || v.seen.length>200) return null;
+    const set=new Set(v.seen); if(set.size!==v.seen.length || v.seen.some(id=>typeof id!=='string'||!eligible.includes(id)))return null;
+    if(!v.audit) { // Preserve already-stored legacy results; new writes require audit v1.
+      const pts=v.points||{}, cap=5*(v.seen.length-1);
+      if(Object.keys(pts).some(id=>!set.has(id)||!Number.isInteger(pts[id])||pts[id]<0||pts[id]>cap))return null;
+      return {seen:v.seen,points:pts,legacy:true};
+    }
+    const a=v.audit;
+    if(a.v!==1 || !Number.isInteger(a.dual) || a.dual<0 || a.dual>100 || !Array.isArray(a.rounds)||!Array.isArray(a.choices))return null;
+    let remaining=v.seen.slice(), at=0, round=0, points={};
+    for(const pairs of a.rounds) {
+      round++; if(remaining.length<=1 || round>200 || !Array.isArray(pairs)||pairs.length!==Math.ceil(remaining.length/2))return null;
+      if(pairs.some(p=>!Array.isArray(p)||(p.length!==1&&p.length!==2)))return null;
+      const flat=pairs.flat(); if(flat.length!==remaining.length||new Set(flat).size!==flat.length||flat.some(id=>!remaining.includes(id)))return null;
+      if(pairs.filter(p=>p.length===1).length!==remaining.length%2)return null;
+      let dual=remaining.length>4 ? Math.max(0,Math.min(a.dual,Math.floor(remaining.length/2)-1)) : 0;
+      const next=[],pass=id=>{next.push(id);points[id]=(points[id]||0)+Math.min(round,5);};
+      pairs.filter(p=>p.length===1).forEach(p=>pass(p[0]));
+      for(const p of pairs.filter(p=>p.length===2)) {
+        const ch=a.choices[at++];
+        if(ch==='top')pass(p[0]); else if(ch==='bottom')pass(p[1]); else if(ch==='both'&&dual>0){pass(p[0]);pass(p[1]);dual--;} else return null;
+      }
+      remaining=next;
+    }
+    if(remaining.length!==1||at!==a.choices.length)return null;
+    return {seen:v.seen,points};
+  } catch(e) {return null;}
+}
+async function publishPkRun(id, run) {
+  try {
+    const ref=S.db.doc('pkruns/'+S.uid);
+    await S.db.runTransaction(async tx=>{
+      const snap=await tx.get(ref),prev=snap.exists?snap.data():{};
+      if(prev.battles&&prev.battles[id])return;
+      const battles=Object.assign({},prev.battles||{});
+      battles[id]={points:run.points,seen:run.seen,finishedAt:run.finishedAt,audit:run.audit};
+      tx.set(ref,{battles,_key:id});
+      tx.set(S.db.doc('participation/b_'+id+'_'+S.uid),{kind:'battle',refId:id,uid:S.uid});
+    });toast('투표 완료!');
+  } catch(e){toast('집계 등록 실패: 재시도 버튼을 눌러주세요. '+(e.code||e.message),6000);}
+  render();
+}
+async function publishResults() {
+  if(!isOps()||S.busy)return; S.busy=true;
+  try {
+    const fresh=await Promise.all(['runs','pkruns','cards','battles'].map(c=>S.db.collection(c).get()));
+    const data=q=>q.docs.map(d=>Object.assign({id:d.id},d.data()));
+    S.runs=data(fresh[0]);S.pkPublic=data(fresh[1]);S.cards=data(fresh[2]);S.battles=data(fresh[3]);
+    const w=curWeek(), weeks=[...new Set(S.cards.map(c=>c.weekId))].filter(x=>x<w||(x===w&&phase()==='results'));
+    let n=0,invalid=0,legacy=0;
+    const summarize=(votes,eligible)=>{ const checked=votes.map(v=>verifiedVote(v,eligible)); invalid+=checked.filter(v=>!v).length; legacy+=checked.filter(v=>v&&v.legacy).length; const ok=checked.filter(Boolean), scores={}; eligible.forEach(id=>{let total=0,exp=0;ok.forEach(v=>{if(v.seen.includes(id)){exp++;total+=v.points[id]||0;}});scores[id]={total,exp,norm:exp?total/exp*ok.length:0};});return {n:ok.length,scores}; };
+    for(const id of weeks){const data=summarize(S.runs.map(r=>r.weeks&&r.weeks[id]).filter(Boolean),poolFor(id).map(c=>c.id));await S.db.doc('results/w_'+id).set(Object.assign({kind:'week',refId:id,updatedAt:Date.now()},data));n++;}
+    for(const b of S.battles.filter(b=>b.state==='closed')) {
+      const q=await S.db.collection('entries').where('battleId','==',b.id).get();
+      const data=summarize(S.pkPublic.map(r=>r.battles&&r.battles[b.id]).filter(Boolean),q.docs.map(d=>d.id));
+      await S.db.doc('results/b_'+b.id).set(Object.assign({kind:'battle',refId:b.id,updatedAt:Date.now()},data));n++;
+    }
+    toast(n ? `${n}개 결과 공개·갱신 완료. 제외 기록 ${invalid}개${legacy?`, 기존 방식 기록 ${legacy}개 유지`:''}` : '아직 마감된 회차·종료된 배틀이 없습니다',6000);
+  }catch(e){toast('집계 공개 실패: '+(e.code||e.message),6000);}finally{S.busy=false;render();}
+}
 
 init();
 })();

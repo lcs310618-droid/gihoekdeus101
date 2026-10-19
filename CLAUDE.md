@@ -1,30 +1,26 @@
-# 기획듀스 101 — 코드 안내 (Claude용)
+# 기획듀스 101 — 내부용 수정본 유지보수
 
-피지컬갤러리 1중대(온라인 기획팀)가 쓰는 팀 앱. 소재 카드를 익명으로 올리고 화·금 이상형 월드컵으로 거른 뒤 계란님(owner)이 선정한다. 썸네일·제목 배틀도 같은 엔진으로 돈다.
+정적 `index.html` + Firebase compat SDK. 기존 프로젝트와 DB를 그대로 사용한다. `firebase-config.js`는 운영 중인 실제 파일을 보존한다.
 
-## 구조
-- 정적 파일 1개(`index.html`)에 CSS + 바닐라 JS. 빌드 없음. Firebase compat SDK(gstatic)로 Google 로그인 + Firestore.
-- `firebase-config.js`: Firebase 콘솔의 `firebaseConfig = {...}` 코드를 그대로 붙여넣는 파일. `index.html`의 `loadConfig()`가 이 파일을 fetch로 읽어 `{ ... apiKey ... }` 객체만 정규식으로 꺼내므로, import 줄이 섞여 있어도 된다. `<script src>`로 싣지 않는다.
-- `firestore.rules`: 접근 규칙. 변경하면 콘솔에 다시 게시해야 함. 계란님(owner)은 `settings/main.ownerEmail`로 정해진다(첫 로그인 때 앱 안 '첫 설정' 화면에서 `claimOwner()`가 만들고, 관리 탭 `ownerSave()`로 바꾼다). 코드나 규칙 파일에 이메일을 적지 않는다.
-- 호스팅은 GitHub Pages(`main` 브랜치, 저장소 루트). `main`에 올리면 1분 안에 반영. 배포 주소의 호스트를 Firebase 승인된 도메인에 넣어야 로그인된다.
-- 전역 상태는 `S` 객체 하나. 모든 화면은 `render()` → `render<탭>()`이 `innerHTML`을 다시 그린다. 이벤트는 `document`의 `click` 위임 하나에 `data-act`로 분기.
+## 중요한 변경
 
-## 핵심 규칙 (바꿀 때 지켜야 함)
-- 작성자 익명: 카드·시안·코멘트 문서에는 작성자 필드가 없다. 작성자는 `authors/{uid}` 문서 안의 맵(`cards`, `entries`, `comments`)에만 있고, 규칙상 본인과 owner만 읽는다. 선정되면 그때 `authorUid`가 카드/시안에 공개된다. 공개 문서에 작성자를 쓰지 말 것.
-- 회차(`weekId`)는 월드컵 요일의 ISO 날짜 문자열(`2026-10-20`). `curWeek()`가 오늘 기준 다음 월드컵 날짜, `phase()`가 시계로 upload/worldcup/results를 정한다. 설정 `override`로 이번 회차만 강제 가능.
-- 월드컵 엔진: `startRound(run, ids, dual)`, `applyDecision(run, choice, dual)`. 라운드마다 남은 카드끼리 랜덤 재대진, 부전승은 자동 통과, n번째 통과에 `min(n,5)`점. `둘 다 통과`는 라운드당 `min(dual, pairs-1)`회, 남은 카드 4장 이하면 0회 (수렴 보장). 소재 월드컵과 배틀이 같은 함수를 쓴다.
-- 진행 중인 판은 `users/{uid}/private/run`(배틀은 `pkrun`)에만 있고, 완료 시 `runs/{uid}.weeks[weekId]`(배틀은 `pkruns/{uid}.battles[id]`)에 `{points, seen}`으로 공개된다. 순위는 각 클라이언트가 `standings()`로 합산(본 사람 수가 다르면 환산).
-- 코멘트 열람: 이번 회차 내 월드컵을 끝냈거나, 결과 공개 단계거나, 지난 회차거나, 내 카드일 때만 남의 코멘트가 보인다 (`canSeeComments`).
-- 카드 수: 1인 '상한'은 없다 (2026-10-19 패치). `perPerson`/`ownerCards` 설정은 권장 장수 표시용이고 `myRec()`로 읽는다. 제출을 막는 로직을 다시 넣지 말 것. 월드컵 N강은 그 회차 카드 수로 자동 결정되며 엔진은 48장까지 수렴 확인됨.
-- 권한: `S.role` ∈ owner/ops/member. `S.isOwner`는 `settings/main.ownerEmail`과 로그인 이메일 비교(`ownerOf()`). `isOps()`가 관리 탭·배틀 관리 게이트. 멤버 명단은 `members/{email}`. ownerEmail이 바뀌면 settings 스냅샷에서 `location.reload()`로 권한을 다시 계산한다.
+- `runs/{uid}`, `pkruns/{uid}`는 본인과 owner/ops만 읽는다. 일반 멤버에게 전체 컬렉션을 구독시키지 말 것.
+- owner/ops가 관리 탭 `publishResults()`로 마감 회차/종료 배틀을 집계하고 `results/w_날짜`, `results/b_배틀ID`에 개인정보 없는 `{n,scores}`를 공개한다. 일반 멤버의 standings는 공개 집계만 사용한다.
+- 운영자는 전체 투표 원본을 읽는 신뢰된 계정이다. `authors` 전체는 owner만 읽는다. 원본 `seen`을 통한 운영자의 작성자 추정 가능성은 수용한 내부용 설계다.
+- `participation`은 UID·대상·완료 종류만 공개하며 점수/seen이 없다.
+- 새 투표에는 `audit:{v:1,dual,rounds,choices}`를 저장한다. `verifiedVote()`가 대진을 재생해 점수를 계산한다. 정상 누적 점수는 5를 초과할 수 있다. 기존 audit 없는 완료 기록은 삭제하지 않고 호환 검사 후 유지한다. 새 저장은 audit 필수이고 완료 회차별로 덮어쓸 수 없다.
+- `registerAuthor(batch,kind,id,value)`로 본문 생성과 작성자 연결 추가를 원자적으로 처리한다. `authors`에는 `_change:{kind,id}`가 추가된다. 기존 maps는 변경/삭제 불가, 새 본문을 같은 batch에서 만드는 경우만 한 항목 추가 가능. 기존 8개 카드는 이전·재작성하지 않는다.
+- 카드 삭제 후 작성자 연결을 남기므로 countMine은 실제 살아있는 카드 기준이다. 첫 투표 시작 때 `roundLocks`를 만들고 카드 삭제를 막는다.
+- 시안 등록/삭제 때 `battles.entryCount`를 수정하지 않는다. 배틀 안의 entries 길이가 실제 시안 수다.
+- 댓글은 전체 collection 구독 금지. `refreshComments()`가 열린 카드의 권한에 맞춰 `cardId`와 `weekId`로 필터 조회하거나 본인 댓글 doc만 조회한다. `canSeeComments()`와 규칙 조건을 맞출 것.
+- 공감은 `comments/{id}/likes/{uid}`와 부모 likes를 하나의 transaction으로 변경한다. 기존 공감 수치와 새 사용자별 기록은 완전히 복원 가능한 관계가 아님을 README에 명시했다.
+- `entryThumb()`은 이미지 src를 이스케이프하고 허용 스킴을 확인한다.
+- 단계는 Asia/Seoul 시간으로 계산한다.
 
-## 자주 하는 수정
-- 양식 칸 추가: `SECTIONS` 배열에 `[key, 라벨, 'input'|'textarea', 필수여부, placeholder]` 추가 → `submitCard`의 `card` 객체와 `cardFullHTML`의 `row(...)`에 같은 키 추가.
-- 점수 규칙: `roundPts`, `standings`.
-- 라운드별 공개 범위: `detailFrom`(소재), `pkNoteFrom`(배틀) 설정값과 `matchCardHTML`/`renderPkVote`.
-- 문구·일정 기본값: `DEFAULT_SETTINGS`. 운영 중 숫자는 관리 탭에서 바꾸므로 코드 수정 불필요.
+## 경계
 
-## 확인 방법
-- 문법: `node --check` 로 `<script>` 안의 코드를 검사 (스크립트 본문만 떼어서).
-- 월드컵 수렴: 다양한 카드 수(5, 6, 14, 16, 30)로 `startRound`/`applyDecision`을 무작위 선택으로 돌려 `done`이 되는지 확인.
-- 규칙: Firebase 콘솔 규칙 탭의 "규칙 플레이그라운드"에서 멤버/비멤버/owner로 `authors/{uid}` 읽기를 시험.
+별도 서버 없는 내부용이다. 정상 형식의 대진·선택 전체를 만들어 제출하거나 가짜 완료를 만들려는 악의적 멤버까지 서버에서 검증하지 않는다. 제출 마감/상한의 직접 요청 우회, 시안 모집 중 사전 열람, 라운드 상세 사전 열람은 완전 차단 범위가 아니다. README의 한계를 임의로 보장 문구로 바꾸지 말 것.
+
+## 확인
+
+JS 문법, 기존 카드 8장 시나리오, 여러 카드 수의 부전승/둘 다 통과 점수 replay, 조회 구독 분리, 실패 재시도를 점검한다. 운영 Firebase의 실제 카드 데이터는 첨부되지 않았으며 이번 수정에서 실제 보안 규칙 게시 테스트는 하지 않았다.
