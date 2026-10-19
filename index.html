@@ -397,12 +397,12 @@ function subscribeAll() {
   db.collection('roundLocks').onSnapshot(q=>{S.roundLocks={};q.docs.forEach(d=>S.roundLocks[d.id]=true);render();},e=>{});
   db.collection('participation').onSnapshot(q => { S.participation = q.docs.map(d => d.data()); render(); }, e => {});
   db.doc('authors/' + uid).onSnapshot(s => { S.mine = s.exists ? s.data() : {}; if (!S.mine.cards) S.mine.cards = {}; render(); }, e => {});
-  db.doc('users/' + uid + '/private/run').onSnapshot(s => { S.run = s.exists ? unpackRun(s.data()) : null; render(); }, e => {});
+  db.doc('users/' + uid + '/private/run').onSnapshot(s => { S.run = s.exists ? s.data() : null; render(); }, e => {});
   if (S.isOwner) db.collection('authors').onSnapshot(q => { const ix = { cards: {}, entries: {}, comments: {} }; q.docs.forEach(d => { const a = d.data(); Object.keys(a.cards || {}).forEach(k => ix.cards[k] = d.id); Object.keys(a.entries || {}).forEach(k => ix.entries[k] = d.id); Object.keys(a.comments || {}).forEach(k => ix.comments[k] = d.id); }); S.authorsIndex = ix; render(); }, e => {});
   db.collection('battles').onSnapshot(q => { S.battles = q.docs.map(d => Object.assign({ id: d.id }, d.data())).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)); render(); }, e => {});
   if (isOps()) db.collection('pkruns').onSnapshot(q => { S.pkPublic = q.docs.map(d => Object.assign({ id: d.id }, d.data())); render(); }, e => {});
   else db.doc('pkruns/' + uid).onSnapshot(d => { S.pkPublic = d.exists ? [Object.assign({id:d.id}, d.data())] : []; render(); }, e => {});
-  db.doc('users/' + uid + '/private/pkrun').onSnapshot(s => { S.pkRuns = s.exists ? unpackRuns(s.data()) : {}; render(); }, e => {});
+  db.doc('users/' + uid + '/private/pkrun').onSnapshot(s => { S.pkRuns = s.exists ? s.data() : {}; render(); }, e => {});
   db.doc('users/' + uid + '/private/meta').onSnapshot(s => { S.meta = s.exists ? s.data() : { comments: {}, likes: {} }; if (S.meta.likeSchema !== 2) { S.meta.likes = {}; S.meta.likeSchema = 2; } if (!S.meta.comments) S.meta.comments = {}; if (!S.meta.likes) S.meta.likes = {}; render(); }, e => {});
 }
 function selfHealAuthor() {
@@ -710,24 +710,19 @@ async function deleteCard(id) {
 }
 
 /* worldcup */
-function makePairs(ids) { const a = shuffle(ids), p = []; for (let i = 0; i < a.length; i += 2) p.push(a[i + 1] != null ? [a[i], a[i + 1]] : [a[i]]); return p; }
-/* Firestore cannot store an array inside an array. In memory a pairing is [[a,b],[c,d],[e]];
-   on disk a pairing list is ["a|b","c|d","e"] and one audit round is a single string "a|b,c|d,e".
-   Only the save/load boundary (and verifiedVote replay) touches the packed form. IDs are Firestore auto IDs, so '|' and ',' are safe. */
-function packPairs(pairs) { return (pairs || []).map(p => Array.isArray(p) ? p.join('|') : String(p)); }
-function unpackPairs(list) { return (list || []).map(p => typeof p === 'string' ? p.split('|') : p); }
-function packRound(rd) { return typeof rd === 'string' ? rd : packPairs(rd).join(','); }
-function unpackRound(rd) { return typeof rd === 'string' ? (rd === '' ? [] : rd.split(',').map(s => s.split('|'))) : rd; }
-function packAudit(a) { if (!a || !Array.isArray(a.rounds)) return a; return Object.assign({}, a, { rounds: a.rounds.map(packRound) }); }
-function unpackAudit(a) { if (!a || !Array.isArray(a.rounds)) return a; return Object.assign({}, a, { rounds: a.rounds.map(unpackRound) }); }
-function packRun(run) { if (!run || typeof run !== 'object') return run; const r = Object.assign({}, run); if (Array.isArray(r.pairs)) r.pairs = packPairs(r.pairs); if (r.audit) r.audit = packAudit(r.audit); return r; }
-function unpackRun(run) { if (!run || typeof run !== 'object') return run; const r = Object.assign({}, run); if (Array.isArray(r.pairs)) r.pairs = unpackPairs(r.pairs); if (r.audit) r.audit = unpackAudit(r.audit); return r; }
-function packRuns(runs) { const out = {}; Object.keys(runs || {}).forEach(k => { out[k] = packRun(runs[k]); }); return out; }
-function unpackRuns(runs) { const out = {}; Object.keys(runs || {}).forEach(k => { out[k] = unpackRun(runs[k]); }); return out; }
+function makePairs(ids) {
+  const a = shuffle(ids), p = [];
+  for (let i = 0; i < a.length; i += 2) {
+    p.push(a[i + 1] != null
+      ? { 0: a[i], 1: a[i + 1], length: 2 }
+      : { 0: a[i], length: 1 });
+  }
+  return p;
+}
 function roundPts(r) { return Math.min(r, 5); }
 function startRound(run, remaining, dual) {
   run.remaining = remaining; run.pairs = makePairs(remaining); run.idx = 0; run.next = [];
-  if (run.audit) run.audit.rounds.push(JSON.parse(JSON.stringify(run.pairs)));
+  if (run.audit) run.audit.rounds.push({ pairs: JSON.parse(JSON.stringify(run.pairs)) });
   const bye = run.pairs.find(p => p.length === 1);
   if (bye) { run.next.push(bye[0]); run.points[bye[0]] = (run.points[bye[0]] || 0) + roundPts(run.round); run.pairs = run.pairs.filter(p => p.length === 2); run.byeId = bye[0]; } else run.byeId = null;
   run.dualLeft = remaining.length > 4 ? Math.max(0, Math.min(dual ?? 2, run.pairs.length - 1)) : 0;
@@ -757,7 +752,7 @@ async function startRun() {
 }
 async function saveRun(run) {
   S.busy = true;
-  try { await S.db.doc('users/' + S.uid + '/private/run').set(packRun(run)); S.run = run; return true; }
+  try { await S.db.doc('users/' + S.uid + '/private/run').set(run); S.run = run; return true; }
   catch (e) { toast('저장 실패: ' + (e.code || e.message)); return false; }
   finally { S.busy = false; render(); }
 }
@@ -775,7 +770,7 @@ async function publishRun(run) {
       const s = await tx.get(ref), prev = s.exists ? s.data() : {};
       if (prev.weeks && prev.weeks[run.weekId]) return;
       const weeks = Object.assign({}, prev.weeks || {});
-      weeks[run.weekId] = {points:run.points, seen:run.seen, finishedAt:run.finishedAt, audit:packAudit(run.audit)};
+      weeks[run.weekId] = {points:run.points, seen:run.seen, finishedAt:run.finishedAt, audit:run.audit};
       tx.set(ref, {weeks, _key:run.weekId});
       tx.set(S.db.doc('participation/w_' + run.weekId + '_' + S.uid), {kind:'week', refId:run.weekId, uid:S.uid});
     });
@@ -1003,7 +998,7 @@ async function pkDeleteBattle() {
   const b = S.battles.find(x => x.id === S.pkOpen); if (!b || S.pkEntries.length) return;
   try { await S.db.doc('battles/' + b.id).delete(); closeBattle(); toast('배틀을 삭제했습니다'); } catch (e) { toast('실패: ' + (e.code || e.message)); }
 }
-async function pkSaveRuns(runs) { S.busy = true; try { await S.db.doc('users/' + S.uid + '/private/pkrun').set(packRuns(runs)); S.pkRuns = runs; return true; } catch(e) {toast('저장 실패: ' + (e.code || e.message)); return false;} finally {S.busy=false;render();} }
+async function pkSaveRuns(runs) { S.busy = true; try { await S.db.doc('users/' + S.uid + '/private/pkrun').set(runs); S.pkRuns = runs; return true; } catch(e) {toast('저장 실패: ' + (e.code || e.message)); return false;} finally {S.busy=false;render();} }
 
 async function pkStart() {
   if (S.busy) return; const b = S.battles.find(x => x.id === S.pkOpen); if (!b) return;
@@ -1241,8 +1236,14 @@ function verifiedVote(v, eligible) {
     const a=v.audit;
     if(a.v!==1 || !Number.isInteger(a.dual) || a.dual<0 || a.dual>100 || !Array.isArray(a.rounds)||!Array.isArray(a.choices))return null;
     let remaining=v.seen.slice(), at=0, round=0, points={};
-    for(const rawRound of a.rounds) {
-      const pairs=unpackRound(rawRound); // stored as "a|b,c|d,e" (Firestore forbids nested arrays)
+    for(const storedRound of a.rounds) {
+      const rawPairs = Array.isArray(storedRound) ? storedRound : storedRound?.pairs;
+      if (!Array.isArray(rawPairs)) return null;
+      const pairs = rawPairs.map(p => {
+        if (Array.isArray(p)) return p;
+        if (!p || (p.length !== 1 && p.length !== 2)) return null;
+        return p.length === 1 ? [p[0]] : [p[0], p[1]];
+      });
       round++; if(remaining.length<=1 || round>200 || !Array.isArray(pairs)||pairs.length!==Math.ceil(remaining.length/2))return null;
       if(pairs.some(p=>!Array.isArray(p)||(p.length!==1&&p.length!==2)))return null;
       const flat=pairs.flat(); if(flat.length!==remaining.length||new Set(flat).size!==flat.length||flat.some(id=>!remaining.includes(id)))return null;
@@ -1267,7 +1268,7 @@ async function publishPkRun(id, run) {
       const snap=await tx.get(ref),prev=snap.exists?snap.data():{};
       if(prev.battles&&prev.battles[id])return;
       const battles=Object.assign({},prev.battles||{});
-      battles[id]={points:run.points,seen:run.seen,finishedAt:run.finishedAt,audit:packAudit(run.audit)};
+      battles[id]={points:run.points,seen:run.seen,finishedAt:run.finishedAt,audit:run.audit};
       tx.set(ref,{battles,_key:id});
       tx.set(S.db.doc('participation/b_'+id+'_'+S.uid),{kind:'battle',refId:id,uid:S.uid});
     });toast('투표 완료!');
